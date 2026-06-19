@@ -4,7 +4,7 @@ import { cloudinary } from '~/config/cloudinary.js';
 import { ApiError } from '../utils/ApiError.js';
 import ProductVariantModel from '../models/productVariantModel.js';
 import ProductModel from '../models/productModel.js';
-import { convertName } from "~/utils/formartter.js";
+import { convertName , removeVietnameseTones } from "~/utils/formartter.js";
 
 
 const createProductVariant = async (req, res, next) => {
@@ -14,7 +14,7 @@ const createProductVariant = async (req, res, next) => {
         if (!existingProduct) {
             throw new ApiError(StatusCodes.NOT_FOUND, 'Sản phẩm gốc không tồn tại !');
         }
-        const sku = `${convertName(existingProduct.name)}-${storage.toUpperCase()}-${color.split(' ')[0].toUpperCase()}-${condition.toUpperCase()}`;
+        const sku = `${convertName(existingProduct.name)}-${storage.toUpperCase()}-${removeVietnameseTones(color.split(' ')[0].toUpperCase())}-${condition.toUpperCase()}`;
         const bodyData = {
             product: product,
             sku : sku, 
@@ -25,8 +25,8 @@ const createProductVariant = async (req, res, next) => {
             price : price,
             originalPrice : originalPrice,
             stock : stock,
-            images: req.files ? req.files.map(file => file.path) : null,
-            imagesPublicId: req.files ? req.files.map(file => file.filename) : null,
+            imageColor: req.file ? req.file.path : null,
+            imageColorPublicId: req.file ? req.file.filename : null,
         };
         const newProductVariant = await ProductVariantModel.create(bodyData);
         res.status(StatusCodes.CREATED).json({

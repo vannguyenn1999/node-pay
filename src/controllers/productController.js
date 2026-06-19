@@ -38,10 +38,14 @@ const createProduct = async (req, res, next) => {
             serie : serie, 
             name: name,
             description : description ,
-            mainImage: req.file ? req.file.path : null,
-            mainImagePublicId: req.file ? req.file.filename : null,
+            mainImage: req.files['mainImage'] ? req.files['mainImage'][0].path : null,
+            images : req.files['images'] ? req.files['images'].map(file => file.path) : null,
+
+            mainImagePublicId : req.files['mainImage'] ? req.files['mainImage'][0].filename : null,
+            imagesPublicId: req.files['images'] ? req.files['images'].map(file => file.filename) : null,
             specifications : specifications ? JSON.parse(specifications) : {}, // Chuyển specifications từ chuỗi JSON sang đối tượng
-            slug: `${slugify(name)}-${randomStringSecure()}`,
+            // slug: `${slugify(name)}-${randomStringSecure()}`,
+            slug: `${slugify(name)}}`,
         };
         const newProduct = await ProductModel.create(bodyData);
         res.status(StatusCodes.CREATED).json({

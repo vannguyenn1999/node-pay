@@ -23,7 +23,7 @@ const storage = new CloudinaryStorage({
         req.body.filename ||
         req.body.fileName ||
         file.originalname.split('.')[0].trim().replaceAll(' ', '_');
-      console.log("customName customName : " , customName)
+      // console.log("customName customName : " , customName)
       return `${customName}-${Date.now()}`;
     },
     resource_type: 'auto',

@@ -18,6 +18,14 @@ export const randomStringSecure = (length = 8) => {
   return Array.from(array, (x) => chars[x % chars.length]).join('');
 };
 
+export const removeVietnameseTones = (str) => {
+  return str
+    .normalize('NFD') // Tách các dấu ra khỏi chữ cái gốc (Ví dụ: Ồ -> O + ◌̂ + ◌̀)
+    .replace(/[\u0300-\u036f]/g, '') // Xóa các ký tự dấu vừa được tách ra
+    .replace(/đ/g, 'd') // Chuyển đổi chữ đ thường thành d
+    .replace(/Đ/g, 'D'); // Chuyển đổi chữ Đ hoa thành D
+}
+
 export const convertName = (str) => {
   if (!str) return "";
 

@@ -66,18 +66,19 @@ const ProductVariantSchema = new mongoose.Schema({
     min: [0, 'Số lượng kho không thể nhỏ hơn 0'],
     default: 0
   },
-
+  
   // 5. HÌNH ẢNH THỰC TẾ
   // Mỗi màu sắc hoặc tình trạng máy (như máy 98%) nên có hình ảnh thực tế riêng để khách xem
-  images: {
-    type: [String],
-    default: []
+  imageColor: {
+    type: String,
+    required: [true, 'Vui lòng cung cấp ảnh đại diện chính cho dòng sản phẩm này']
+  },
+  imageColorPublicId: {
+    type: String,
+    required: [true, 'Vui lòng cung cấp public_id của ảnh đại diện chính để quản lý trên Cloudinary']
   },
 
-  imagesPublicId: {
-    type: [String],
-    default: []
-  },
+  
   // 6. TRẠNG THÁI KINH DOANH
   isActive: {
     type: Boolean,

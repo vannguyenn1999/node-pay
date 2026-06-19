@@ -41,6 +41,16 @@ const ProductSchema = new mongoose.Schema({
     required: [true, 'Vui lòng cung cấp public_id của ảnh đại diện chính để quản lý trên Cloudinary']
   },
 
+  images: {
+    type: [String],
+    default: []
+  },
+
+  imagesPublicId: {
+    type: [String],
+    default: []
+  },
+
   // 3. THÔNG SỐ KỸ THUẬT (SPECIFICATIONS)
   // Đồ Apple khách hàng rất quan tâm đến thông số, gom nhóm lại giúp bạn dễ quản lý và hiển thị dạng bảng
   specifications: {
