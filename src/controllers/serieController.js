@@ -20,7 +20,7 @@ const getAllSeries = async (req , res , next) => {
 const createSerie = async (req , res , next) => {
     try {
         const  { name  , description } = req.body;
-        const newSerie = await SerieModel.create({ name , description , slug: `${slugify(name)}-${randomStringSecure()}` });
+        const newSerie = await SerieModel.create({ name , description , slug: `${slugify(name)}}` });
         res.status(StatusCodes.CREATED).json({
             success: true,
             data: newSerie,

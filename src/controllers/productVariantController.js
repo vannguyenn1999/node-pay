@@ -4,6 +4,7 @@ import { cloudinary } from '~/config/cloudinary.js';
 import { ApiError } from '../utils/ApiError.js';
 import ProductVariantModel from '../models/productVariantModel.js';
 import ProductModel from '../models/productModel.js';
+import SerieModel from "~/models/serieModel.js";
 import { convertName , removeVietnameseTones } from "~/utils/formartter.js";
 
 
@@ -38,6 +39,46 @@ const createProductVariant = async (req, res, next) => {
         next(error);
     }
 }
+
+const getAllProductVariant = async (req, res, next) => {
+    try {
+        const search = req.query.search || '';
+
+        let productFilter = {};
+        if (search.trim()) {
+            const products = await ProductModel.find({
+                name: { $regex: search, $options: 'i' },
+                isActive: true,
+            }).select('_id');
+
+            productFilter = {
+                product: { $in: products.map((product) => product._id) },
+            };
+        }
+
+        const variants = await ProductVariantModel.find({
+            ...productFilter,
+            isActive: true,
+        })
+            .populate({
+                path: 'product',
+                select: 'name slug mainImage serie',
+                populate: {
+                    path: 'serie',
+                    select: 'name slug',
+                },
+            })
+            .sort({ createdAt: -1 });
+
+        res.status(StatusCodes.OK).json({
+            success: true,
+            data: variants,
+            message: 'Lấy danh sách biến thể sản phẩm thành công !',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 const getProductVariantDetail = async (req, res, next) => {
     try {
@@ -120,10 +161,65 @@ const deleteProductVariant = async (req, res, next) => {
     }
 }
 
+const getProductVariantBySerie = async (req, res, next) => {
+    try {
+        const { serieSlug } = req.params;
+
+        const series = await SerieModel.findOne({
+            slug: serieSlug,
+            isActive: true,
+        }).select('_id name slug');
+
+        if (!series) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                success: false,
+                message: 'Không tìm thấy series nào !',
+            });
+        }
+
+        const products = await ProductModel.find({
+            serie: series._id,
+            isActive: true,
+        }).select('_id name slug mainImage');
+
+        const productIds = products.map((product) => product._id);
+
+        const variants = await ProductVariantModel.find({
+            product: { $in: productIds },
+            isActive: true,
+        })
+            .populate({
+                path: 'product',
+                select: 'name slug mainImage serie',
+                populate: {
+                    path: 'serie',
+                    select: 'name slug',
+                },
+            })
+            .sort({ createdAt: -1 });
+
+        res.status(StatusCodes.OK).json({
+            success: true,
+            data: {
+                serie: series,
+                variants,
+                pagination : {
+                    total : variants.length
+                }
+            },
+            message: 'Lấy danh sách biến thể theo series thành công !',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 
 export const ProductVariantController = {
     createProductVariant,
+    getAllProductVariant,
     getProductVariantDetail,
     deleteProductVariant,
     updateProductVariant,
-}
+    getProductVariantBySerie,
+};

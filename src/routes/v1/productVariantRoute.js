@@ -6,12 +6,17 @@ import { uploadCloud } from '~/config/cloudinary.js';
 const ProductVariantRouter = express.Router()
 
 ProductVariantRouter.route('/')
+.get(ProductVariantController.getAllProductVariant)
 .post(uploadCloud.single('imageColor'), ProductVariantController.createProductVariant);
+
+ProductVariantRouter.route('/series/:serieSlug').get(ProductVariantController.getProductVariantBySerie)
 
 // GET, PUT, DELETE specific category
 ProductVariantRouter.route('/:productSlug')
   .get(ProductVariantController.getProductVariantDetail)
   .put(uploadCloud.single('imageColor'), ProductVariantController.updateProductVariant)
   .delete(ProductVariantController.deleteProductVariant);
+
+
 
 export default ProductVariantRouter
