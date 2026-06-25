@@ -6,6 +6,7 @@ import ProductVariantModel from '../models/productVariantModel.js';
 import ProductModel from '../models/productModel.js';
 import SerieModel from "~/models/serieModel.js";
 import { convertName , removeVietnameseTones } from "~/utils/formartter.js";
+import CategoryModel from "~/models/categoryModel.js";
 
 
 const createProductVariant = async (req, res, next) => {
@@ -43,6 +44,9 @@ const createProductVariant = async (req, res, next) => {
 const getAllProductVariant = async (req, res, next) => {
     try {
         const search = req.query.search || '';
+        const page = req.query.p || req.query.page || 1;
+        const limit = req.query.l || req.query.limit || 8;
+        const skip = (page - 1) * limit;
 
         let productFilter = {};
         if (search.trim()) {
@@ -56,10 +60,16 @@ const getAllProductVariant = async (req, res, next) => {
             };
         }
 
+        // Đếm tổng số biến thể sản phẩm sau khi áp dụng filter (search, isActive)
+        const totalVariants = await ProductVariantModel.countDocuments({
+            ...productFilter,
+            isActive: true,
+        });
+
         const variants = await ProductVariantModel.find({
             ...productFilter,
             isActive: true,
-        })
+        }).limit(limit).skip(skip)
             .populate({
                 path: 'product',
                 select: 'name slug mainImage serie',
@@ -69,10 +79,17 @@ const getAllProductVariant = async (req, res, next) => {
                 },
             })
             .sort({ createdAt: -1 });
-
+        
+        const totalPages = Math.ceil(totalVariants / limit);
         res.status(StatusCodes.OK).json({
             success: true,
             data: variants,
+             pagination: {
+                currentPage: Number(page),
+                totalPages,
+                totalVariants,
+                limit : Number(limit),
+            },
             message: 'Lấy danh sách biến thể sản phẩm thành công !',
         });
     } catch (error) {
@@ -163,14 +180,22 @@ const deleteProductVariant = async (req, res, next) => {
 
 const getProductVariantBySerie = async (req, res, next) => {
     try {
-        const { serieSlug } = req.params;
+        const { serieSlug , categorySlug } = req.params;
+        console.log(serieSlug , categorySlug)
 
         const series = await SerieModel.findOne({
             slug: serieSlug,
             isActive: true,
         }).select('_id name slug');
 
-        if (!series) {
+
+        const category = await CategoryModel.findOne({
+            slug: categorySlug,
+            isActive: true,
+        }).select('_id name slug');
+
+        console.log(series , category)
+        if (!series || !category) {
             return res.status(StatusCodes.NOT_FOUND).json({
                 success: false,
                 message: 'Không tìm thấy series nào !',
@@ -179,6 +204,7 @@ const getProductVariantBySerie = async (req, res, next) => {
 
         const products = await ProductModel.find({
             serie: series._id,
+            category :category._id,
             isActive: true,
         }).select('_id name slug mainImage');
 
@@ -202,6 +228,7 @@ const getProductVariantBySerie = async (req, res, next) => {
             success: true,
             data: {
                 serie: series,
+                category : category,
                 variants,
                 pagination : {
                     total : variants.length

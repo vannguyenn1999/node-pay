@@ -9,7 +9,7 @@ ProductVariantRouter.route('/')
 .get(ProductVariantController.getAllProductVariant)
 .post(uploadCloud.single('imageColor'), ProductVariantController.createProductVariant);
 
-ProductVariantRouter.route('/series/:serieSlug').get(ProductVariantController.getProductVariantBySerie)
+ProductVariantRouter.route('/:categorySlug/:serieSlug').get(ProductVariantController.getProductVariantBySerie)
 
 // GET, PUT, DELETE specific category
 ProductVariantRouter.route('/:productSlug')
