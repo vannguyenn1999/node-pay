@@ -9,6 +9,7 @@ import { convertName , removeVietnameseTones } from "~/utils/formartter.js";
 import CategoryModel from "~/models/categoryModel.js";
 
 
+// ? tạo mới 1 biến thể sản phầm
 const createProductVariant = async (req, res, next) => {
     try {
         const {product, storage , color , condition , region , price , originalPrice , stock} = req.body;
@@ -41,6 +42,8 @@ const createProductVariant = async (req, res, next) => {
     }
 }
 
+
+// ? Lấy tất cả biến thể của sản phẩm
 const getAllProductVariant = async (req, res, next) => {
     try {
         const search = req.query.search || '';
@@ -97,7 +100,8 @@ const getAllProductVariant = async (req, res, next) => {
     }
 };
 
-const getProductVariantDetail = async (req, res, next) => {
+// ? Lấy thông tin biến thể của 1 sản phẩm
+const getProductVariant = async (req, res, next) => {
     try {
         const { productSlug } = req.params;
         const product = await ProductModel.findOne({ slug: productSlug, isActive: true })
@@ -122,6 +126,7 @@ const getProductVariantDetail = async (req, res, next) => {
     }
 }
 
+// ? Cập nhật biến thể sản phầm
 const updateProductVariant = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -148,6 +153,7 @@ const updateProductVariant = async (req, res, next) => {
     }
 }
 
+// ? Xoá biến thể sản phầm
 const deleteProductVariant = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -178,6 +184,7 @@ const deleteProductVariant = async (req, res, next) => {
     }
 }
 
+// ? Tìm kiếm biến thể sản phẩm thông qua series và danh mục sản phẩm
 const getProductVariantBySerie = async (req, res, next) => {
     try {
         const { serieSlug , categorySlug } = req.params;
@@ -242,11 +249,40 @@ const getProductVariantBySerie = async (req, res, next) => {
 };
 
 
+// ? Lấy thông tin chi tiết của 1 sản phẩm
+const getProductVariantDetail = async (req , res , next) => {
+    try {
+        const sku = req.params.sku
+        if (!sku) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+        }
+
+        const variant = await ProductVariantModel.findOne({sku : sku})
+        
+        if (!variant) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+        }
+
+        const product = await ProductModel.findById(variant.product)
+
+        // console.log("variant" , variant)
+        res.status(200).json({
+            success : true,
+            product,
+            variant,
+            message : 'Tìm kiếm thông tin sản phầm thành công !'
+        })
+    } catch (error) {
+        next(error)
+    }
+}
+
 export const ProductVariantController = {
     createProductVariant,
     getAllProductVariant,
-    getProductVariantDetail,
+    getProductVariant,
     deleteProductVariant,
     updateProductVariant,
     getProductVariantBySerie,
+    getProductVariantDetail
 };
