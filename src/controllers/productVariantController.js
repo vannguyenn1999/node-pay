@@ -50,6 +50,7 @@ const getAllProductVariant = async (req, res, next) => {
         const page = req.query.p || req.query.page || 1;
         const limit = req.query.l || req.query.limit || 8;
         const skip = (page - 1) * limit;
+        const sortType = req.query.sort || 'newest';
 
         let productFilter = {};
         if (search.trim()) {
@@ -69,6 +70,12 @@ const getAllProductVariant = async (req, res, next) => {
             isActive: true,
         });
 
+        const sortOption = sortType === 'price_asc'
+            ? { price: 1 }
+            : sortType === 'price_desc'
+                ? { price: -1 }
+                : { createdAt: -1 };
+
         const variants = await ProductVariantModel.find({
             ...productFilter,
             isActive: true,
@@ -81,7 +88,7 @@ const getAllProductVariant = async (req, res, next) => {
                     select: 'name slug',
                 },
             })
-            .sort({ createdAt: -1 });
+            .sort(sortOption);
         
         const totalPages = Math.ceil(totalVariants / limit);
         res.status(StatusCodes.OK).json({
@@ -188,7 +195,7 @@ const deleteProductVariant = async (req, res, next) => {
 const getProductVariantBySerie = async (req, res, next) => {
     try {
         const { serieSlug , categorySlug } = req.params;
-        console.log(serieSlug , categorySlug)
+        // console.log(serieSlug , categorySlug)
 
         const series = await SerieModel.findOne({
             slug: serieSlug,
@@ -201,7 +208,7 @@ const getProductVariantBySerie = async (req, res, next) => {
             isActive: true,
         }).select('_id name slug');
 
-        console.log(series , category)
+        // console.log(series , category)
         if (!series || !category) {
             return res.status(StatusCodes.NOT_FOUND).json({
                 success: false,
