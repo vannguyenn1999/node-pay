@@ -6,7 +6,12 @@ import { slugify, randomStringSecure } from '~/utils/formartter';
 
 const getAllCategories = async (req , res , next) => {
     try {
-        const categories = await CategoryModel.find();
+        const filter = {};
+        const { isActive } = req.query;
+        if (isActive) {
+            filter.isActive = isActive === 'true';
+        }
+        const categories = await CategoryModel.find(filter);
         res.status(StatusCodes.OK).json({
             success: true,
             data: categories,
@@ -19,8 +24,9 @@ const getAllCategories = async (req , res , next) => {
 
 const createCategory = async (req , res , next) => {
     try {
-        const  { name  , description } = req.body;
-        const newCategory = await CategoryModel.create({ name , description , slug: `${slugify(name)}-${randomStringSecure()}` });
+        console.log("req.body" , req.body)
+        const  { name  , description , isActive } = req.body;
+        const newCategory = await CategoryModel.create({ name , description , isActive , slug: `${slugify(name)}` });
         res.status(StatusCodes.CREATED).json({
             success: true,
             data: newCategory,
@@ -52,13 +58,14 @@ const getCategoryById = async (req , res , next) => {
 const updateCategory = async (req , res , next) => {
     try {
         const { id } = req.params; 
-        const { name , description } = req.body;
+        const { name , description , isActive } = req.body;
         const category = await CategoryModel.findById(id);
         if (!category) {
             throw new ApiError(StatusCodes.NOT_FOUND, 'Danh mục không tồn tại !');
         }
         category.name = name || category.name;
         category.description = description || category.description;
+        category.isActive = typeof isActive !== 'undefined' ? isActive : category.isActive;
         await category.save();
 
         res.status(StatusCodes.OK).json({

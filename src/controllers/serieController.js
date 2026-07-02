@@ -6,7 +6,12 @@ import { slugify, randomStringSecure } from '~/utils/formartter';
 
 const getAllSeries = async (req , res , next) => {
     try {
-        const series = await SerieModel.find();
+        const filter = {};
+        const { isActive } = req.query;
+        if (isActive) {
+            filter.isActive = isActive === 'true';
+        }
+        const series = await SerieModel.find(filter);
         res.status(StatusCodes.OK).json({
             success: true,
             data: series,
@@ -19,8 +24,8 @@ const getAllSeries = async (req , res , next) => {
 
 const createSerie = async (req , res , next) => {
     try {
-        const  { name  , description } = req.body;
-        const newSerie = await SerieModel.create({ name , description , slug: `${slugify(name)}}` });
+        const  { name  , description , isActive } = req.body;
+        const newSerie = await SerieModel.create({ name , description , isActive , slug: `${slugify(name)}}` });
         res.status(StatusCodes.CREATED).json({
             success: true,
             data: newSerie,
@@ -52,13 +57,15 @@ const getSerieById = async (req , res , next) => {
 const updateSerie = async (req , res , next) => {
     try {
         const { id } = req.params; 
-        const { name , description } = req.body;
+        const { name , description , isActive } = req.body;
         const serie = await SerieModel.findById(id);
         if (!serie) {
             throw new ApiError(StatusCodes.NOT_FOUND, 'Seri không tồn tại !');
         }
         serie.name = name || serie.name;
         serie.description = description || serie.description;
+        serie.isActive = typeof isActive !== 'undefined' ? isActive : serie.isActive;
+        
         await serie.save();
 
         res.status(StatusCodes.OK).json({
