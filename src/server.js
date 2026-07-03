@@ -1,3 +1,4 @@
+import dns from 'dns';
 import express from 'express';
 
 import { ENV } from '~/config/environment.js';
@@ -5,6 +6,15 @@ import { CONNECT_TO_MONGO } from '~/config/mongodb.js';
 import { CORS } from '~/config/cors.js';
 import API_V1 from '~/routes/v1/index.js';
 import { errorHandlingMiddleware } from '~/middlewares/errorHandlingMiddleware.js';
+
+// Force DNS resolution to prefer IPv4 first and use fallback IPv4 DNS servers (Google/Cloudflare)
+// to avoid ECONNREFUSED/timeout errors caused by broken local IPv6 DNS configuration.
+try {
+  dns.setDefaultResultOrder('ipv4first');
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {
+  console.warn('Failed to configure DNS settings:', e.message);
+}
 
 const app = express();
 app.use(CORS);
