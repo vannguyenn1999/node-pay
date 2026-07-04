@@ -119,7 +119,8 @@ const getProductVariant = async (req, res, next) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
         }
 
-        const variants = await ProductVariantModel.find({ product: product._id, isActive: true });
+        const variants = await ProductVariantModel.find({ product: product._id, isActive: true })
+            .populate('product');
         res.status(StatusCodes.OK).json({
             success: true,
             data: {
