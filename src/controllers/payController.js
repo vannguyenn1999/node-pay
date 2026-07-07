@@ -46,7 +46,7 @@ const createPayment = async (req , res , next) => {
             amount: amount, // Số tiền (VND)
             // amount: 2000, // Số tiền (VND)
             description: `TT đơn hàng #${orderCode}`,
-            returnUrl: 'https://react-pay-gamma.vercel.app/', // URL khi user hủy thanh toán 
+            returnUrl: 'http://localhost:5173/mypay', // URL khi user hủy thanh toán 
             cancelUrl: 'http://localhost:8080/api/v1/pays/cancel-payment', // URL khi thanh toán xong
             items: items,
         };
@@ -63,7 +63,9 @@ const createPayment = async (req , res , next) => {
             items: order.map(item => {return { productVariant: item.variantId, quantity: item.quantity }}),
             totalAmount: amount,
             orderCode: orderCode,
-            info : infoUser
+            info : infoUser,
+            paymentLinkId : payUrl.paymentLinkId || "",
+            checkoutUrl : payUrl.checkoutUrl || "",
         }
         const pay = new PayModel(newPay);
         await pay.save();
@@ -98,7 +100,7 @@ const getPayment = async (req , res , next) => {
 const handleWebhook = async (req , res , next) => {
     try {
         const webhookData = req.body;
-        console.log("webhookData" , webhookData)
+        // console.log("webhookData" , webhookData)
         if(!webhookData) {
             return res.status(StatusCodes.BAD_REQUEST).json({
                 success: false,
@@ -117,12 +119,12 @@ const handleWebhook = async (req , res , next) => {
 
         // Xử lý dữ liệu webhook ở đây (ví dụ: cập nhật trạng thái đơn hàng trong cơ sở dữ liệu)
         const verifiedData = await PAYOSSS.webhooks.verify(webhookData);
-        console.log("verifiedData" , verifiedData)
+        // console.log("verifiedData" , verifiedData)
         if (verifiedData.desc == 'success' && verifiedData.code === '00') {
             paymentInfo.status = 'PAID';
             await paymentInfo.save();
         }
-
+        // console.log("verifiedData : " , verifiedData)
         res.status(StatusCodes.OK).json({
             success: true,
             message: 'Webhook nhận thành công !',

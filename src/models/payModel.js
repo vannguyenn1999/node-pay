@@ -36,15 +36,21 @@ const paySchema = new mongoose.Schema(
     },
     
     paymentDate: {
-        type: Date,
-        default: Date.now,
+      type: Date,
+      default: Date.now,
     },
 
     info: {
-        name: { type: String, trim: true },      
-        phone: { type: String, trim: true },     
-        address: { type: String, trim: true },        
-        email: { type: String, trim: true },              
+      name: { type: String, trim: true },      
+      phone: { type: String, trim: true },     
+      address: { type: String, trim: true },        
+      email: { type: String, trim: true },              
+    },
+    checkoutUrl :{
+      type: String,
+    },
+    paymentLinkId: {
+      type: String,
     },
 
   },
