@@ -88,7 +88,7 @@ const getProfile = async (req, res, next) => {
     }
     try {
       const decoded = jwt.verify(token, ENV.JWT_SECRET);
-      const user = await UserModel.findById(decoded.id).select('email').select('name').select('phone').select('address').select('userImage')
+      const user = await UserModel.findById(decoded.id).select('email').select('name').select('phone').select('address').select('userImage').select('role');
       res.status(200).json({ user }); // Trả về thông tin người dùng
     } catch (error) {
       res.status(401).json({ message: 'Invalid token', error });
