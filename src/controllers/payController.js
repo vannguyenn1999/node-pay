@@ -165,7 +165,7 @@ const getPaymentHistory = async (req , res , next) => {
         res.status(StatusCodes.OK).json({
             success: true,
             data: paymentHistory,
-            message: 'Lấy thông tin lịch sử đơn hàng thành công !',
+            message: 'Lấy thông tin lịch sử đơn hàng của người dùng thành công !',
         });
     }catch (error) {
         next(error);
@@ -208,11 +208,26 @@ const handlePaymentFailure = async (req , res , next) => {
     }
 }
 
+
+const getPaymentAdmin = async (req , res , next) => {
+    try {
+        const paymentHistory = await PayModel.find().sort({ createdAt: -1 });
+        res.status(StatusCodes.OK).json({
+            success: true,
+            data: paymentHistory,
+            message: 'Lấy thông tin lịch sử đơn hàng thành công !',
+        });
+    }catch (error) {
+        next(error);
+    }
+}
+
 export const PayController = {
     createPayment,
     handleWebhook,
     getPayment,
     getPaymentHistory,
     getPaymentHistoryDetail,
-    handlePaymentFailure
+    handlePaymentFailure,
+    getPaymentAdmin
 }
