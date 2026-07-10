@@ -20,6 +20,17 @@ const app = express();
 app.use(CORS);
 app.use(express.json());
 
+// Request logger middleware
+app.use((req, res, next) => {
+  console.log(`[API Request] ${req.method} ${req.url}`);
+  const originalJson = res.json;
+  res.json = function (body) {
+    console.log(`[API Response] ${res.statusCode} for ${req.method} ${req.url}`);
+    return originalJson.call(this, body);
+  };
+  next();
+});
+
 // const PORT = ENV.PORT || 5000
 
 const START_SERVER = () => {
