@@ -1,18 +1,18 @@
-import {StatusCodes} from "http-status-codes"
+import { StatusCodes } from "http-status-codes"
 
 import { cloudinary } from '~/config/cloudinary.js';
 import { ApiError } from '../utils/ApiError.js';
 import ProductVariantModel from '../models/productVariantModel.js';
 import ProductModel from '../models/productModel.js';
 import SerieModel from "~/models/serieModel.js";
-import { convertName , removeVietnameseTones } from "~/utils/formartter.js";
+import { convertName, removeVietnameseTones } from "~/utils/formartter.js";
 import CategoryModel from "~/models/categoryModel.js";
 
 
 // ? tạo mới 1 biến thể sản phầm
 const createProductVariant = async (req, res, next) => {
     try {
-        const {product, storage , color , condition , region , price , originalPrice , stock} = req.body;
+        const { product, storage, color, condition, region, price, originalPrice, stock } = req.body;
         const existingProduct = await ProductModel.findById(product);
         if (!existingProduct) {
             throw new ApiError(StatusCodes.NOT_FOUND, 'Sản phẩm gốc không tồn tại !');
@@ -20,14 +20,14 @@ const createProductVariant = async (req, res, next) => {
         const sku = `${convertName(existingProduct.name)}-${storage.toUpperCase()}-${removeVietnameseTones(color.split(' ')[0].toUpperCase())}-${condition.toUpperCase()}`;
         const bodyData = {
             product: product,
-            sku : sku, 
-            storage:storage,
-            color:color,
-            condition : condition,
+            sku: sku,
+            storage: storage,
+            color: color,
+            condition: condition,
             region: region,
-            price : price,
-            originalPrice : originalPrice,
-            stock : stock,
+            price: price,
+            originalPrice: originalPrice,
+            stock: stock,
             imageColor: req.file ? req.file.path : null,
             imageColorPublicId: req.file ? req.file.filename : null,
         };
@@ -89,16 +89,16 @@ const getAllProductVariant = async (req, res, next) => {
                 },
             })
             .sort(sortOption);
-        
+
         const totalPages = Math.ceil(totalVariants / limit);
         res.status(StatusCodes.OK).json({
             success: true,
             data: variants,
-             pagination: {
+            pagination: {
                 currentPage: Number(page),
                 totalPages,
                 totalVariants,
-                limit : Number(limit),
+                limit: Number(limit),
             },
             message: 'Lấy danh sách biến thể sản phẩm thành công !',
         });
@@ -112,8 +112,8 @@ const getProductVariant = async (req, res, next) => {
     try {
         const { productSlug } = req.params;
         const product = await ProductModel.findOne({ slug: productSlug, isActive: true })
-        .populate('category', 'name slug')
-        .populate('serie', 'name slug');
+            .populate('category', 'name slug')
+            .populate('serie', 'name slug');
 
         if (!product) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
@@ -123,8 +123,8 @@ const getProductVariant = async (req, res, next) => {
         res.status(StatusCodes.OK).json({
             success: true,
             data: {
-                info: product,       
-                variants: variants  
+                info: product,
+                variants: variants
             },
             message: 'Lấy thông tin biến thể sản phẩm thành công !',
         });
@@ -137,11 +137,11 @@ const getProductVariant = async (req, res, next) => {
 const updateProductVariant = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { storage, color, condition, region ,price,  originalPrice , stock } = req.body;
+        const { storage, color, condition, region, price, originalPrice, stock } = req.body;
         const product = await ProductVariantModel.findById(id);
         if (!product) {
             throw new ApiError(StatusCodes.NOT_FOUND, 'Sản phẩm không tồn tại !');
-        }   
+        }
         product.storage = storage || product.storage;
         product.color = color || product.color;
         product.price = price || product.price;
@@ -176,10 +176,10 @@ const deleteProductVariant = async (req, res, next) => {
                     } else {
                         console.log('Result:', result);
                     }
-            });
+                });
             }
         } catch (error) {
-            console.log("error : " , error)
+            console.log("error : ", error)
         }
         await productVariant.remove();
         res.status(StatusCodes.OK).json({
@@ -194,7 +194,7 @@ const deleteProductVariant = async (req, res, next) => {
 // ? Tìm kiếm biến thể sản phẩm thông qua series và danh mục sản phẩm
 const getProductVariantBySerie = async (req, res, next) => {
     try {
-        const { serieSlug , categorySlug } = req.params;
+        const { serieSlug, categorySlug } = req.params;
         // console.log(serieSlug , categorySlug)
 
         const series = await SerieModel.findOne({
@@ -218,7 +218,7 @@ const getProductVariantBySerie = async (req, res, next) => {
 
         const products = await ProductModel.find({
             serie: series._id,
-            category :category._id,
+            category: category._id,
             isActive: true,
         }).select('_id name slug mainImage');
 
@@ -242,10 +242,10 @@ const getProductVariantBySerie = async (req, res, next) => {
             success: true,
             data: {
                 serie: series,
-                category : category,
+                category: category,
                 variants,
-                pagination : {
-                    total : variants.length
+                pagination: {
+                    total: variants.length
                 }
             },
             message: 'Lấy danh sách biến thể theo series thành công !',
@@ -257,15 +257,15 @@ const getProductVariantBySerie = async (req, res, next) => {
 
 
 // ? Lấy thông tin chi tiết của 1 sản phẩm
-const getProductVariantDetail = async (req , res , next) => {
+const getProductVariantDetail = async (req, res, next) => {
     try {
         const sku = req.params.sku
         if (!sku) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
         }
 
-        const variant = await ProductVariantModel.findOne({sku : sku})
-        
+        const variant = await ProductVariantModel.findOne({ sku: sku })
+
         if (!variant) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
         }
@@ -274,10 +274,10 @@ const getProductVariantDetail = async (req , res , next) => {
 
         // console.log("variant" , variant)
         res.status(200).json({
-            success : true,
+            success: true,
             product,
             variant,
-            message : 'Tìm kiếm thông tin sản phầm thành công !'
+            message: 'Tìm kiếm thông tin sản phầm thành công !'
         })
     } catch (error) {
         next(error)
