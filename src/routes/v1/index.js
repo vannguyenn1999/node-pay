@@ -7,6 +7,8 @@ import SerieController from '~/routes/v1/serieRoute.js';
 import ProductVariantRouter from '~/routes/v1/productVariantRoute.js';
 import CartRouter from '~/routes/v1/cartRoute.js';
 import PayRouter from '~/routes/v1/payRouter.js';
+import UserRouter from '~/routes/v1/userRoute.js';
+import StatisticalRouter from '~/routes/v1/statisticalRoute.js';
 
 const Router = express.Router();
 
@@ -17,5 +19,7 @@ Router.use('/series', SerieController);
 Router.use('/product-variants', ProductVariantRouter);
 Router.use('/carts', CartRouter);
 Router.use('/pays', PayRouter);
+Router.use('/users', UserRouter);
+Router.use('/statistics', StatisticalRouter);
 
 export default Router;
