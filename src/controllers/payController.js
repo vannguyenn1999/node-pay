@@ -1,8 +1,10 @@
+import mongoose from 'mongoose';
 import { StatusCodes } from 'http-status-codes';
 
 import ProductVariantModel from '~/models/productVariantModel.js';
 import ProductModel from '~/models/productModel.js';
 import PayModel from '~/models/payModel.js';
+import UserModel from '~/models/userModel.js';
 import PAYOSSS from '~/config/payos';
 
 // ? Tạo 1 thanh toán mới
@@ -43,8 +45,8 @@ const createPayment = async (req , res , next) => {
         const orderCode = Date.now(); // Mã đơn hàng phải là số (int) và không trùng lặp
         const paymentData = {    
             orderCode: orderCode,
-            amount: amount, // Số tiền (VND)
-            // amount: 2000, // Số tiền (VND)
+            // amount: amount, // Số tiền (VND)
+            amount: 2000, // Số tiền (VND)
             description: `TT đơn hàng #${orderCode}`,
             returnUrl: 'http://localhost:5173/mypay', // URL khi user hủy thanh toán 
             cancelUrl: 'http://localhost:8080/api/v1/pays/cancel-payment', // URL khi thanh toán xong
@@ -94,7 +96,6 @@ const getPayment = async (req , res , next) => {
         next(error);
     }
 }
-
 
 // ? Xử lý webhook từ PayO SSS
 const handleWebhook = async (req , res , next) => {
@@ -208,16 +209,63 @@ const handlePaymentFailure = async (req , res , next) => {
     }
 }
 
-
 const getPaymentAdmin = async (req , res , next) => {
     try {
-        const paymentHistory = await PayModel.find().sort({ createdAt: -1 });
-        res.status(StatusCodes.OK).json({
+        const status = req.query.status || req.query.s || "";
+        const search = req.query.search || ""
+        const page = parseInt(req.query.page) || 1;
+        const skip = (page - 1) * 10;
+        const filter = {};
+
+        if (status !== "") {
+            filter.status = status;
+        }
+
+        if (search !== "") {
+            const orFilter = [
+                { orderCode: { $regex: search, $options: 'i' } },
+            ];
+
+            const matchedUsers = await UserModel.find({
+                name: { $regex: search, $options: 'i' },
+            }).select('_id');
+
+            if (matchedUsers.length > 0) {
+                orFilter.push({ user: { $in: matchedUsers.map(user => user._id) } });
+            }
+
+            filter.$or = orFilter;
+        }
+
+        const paymentHistory = await PayModel.find(filter).sort({ createdAt: -1 }).skip(skip);
+        return res.status(StatusCodes.OK).json({
             success: true,
             data: paymentHistory,
             message: 'Lấy thông tin lịch sử đơn hàng thành công !',
         });
+        
     }catch (error) {
+        next(error);
+    }
+}
+
+const getPaymentAdminDetail = async (req , res , next) => {
+    const { orderCode } = req.params;
+    try {
+        const paymentHistoryDetail = await PayModel.findOne({ orderCode: orderCode }).populate({
+            path: 'items.productVariant',
+            select: 'sku price color storage imageColor product condition',
+            populate: {
+                path: 'product',
+                select: 'name slug mainImage'
+            }
+        });
+        res.status(StatusCodes.OK).json({
+            success: true,
+            data: paymentHistoryDetail,
+            message: 'Lấy thông tin lịch sử đơn hàng thành công !',
+        });
+    } catch (error) {
         next(error);
     }
 }
@@ -229,5 +277,6 @@ export const PayController = {
     getPaymentHistory,
     getPaymentHistoryDetail,
     handlePaymentFailure,
-    getPaymentAdmin
+    getPaymentAdmin,
+    getPaymentAdminDetail
 }

@@ -12,9 +12,13 @@ const getAllProducts = async (req, res, next) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
-        const slug = slugify(search)
+        const role = req.query.role || req.query.r || ''; // Lấy role từ req.user, mặc định là 'admin' nếu không có thông tin user
+        const filter = {}
 
-        const filter = {};
+        if (role === '') {
+            filter.isActive = true
+        }
+
         if (search !== "") {
             const slug = slugify(search)
             filter.slug = { $regex: slug, $options: 'i' };
@@ -97,6 +101,7 @@ const updateProduct = async (req, res, next) => {
             specifications,
             deleteImagePublicIds,
             deleteImageUrls,
+            isActive
         } = req.body;
 
         const product = await ProductModel.findById(id);
@@ -116,6 +121,7 @@ const updateProduct = async (req, res, next) => {
                 ? JSON.parse(specifications)
                 : specifications;
         }
+        product.isActive = isActive !== undefined ? isActive : product.isActive;
 
         const parseArray = (value) => {
             if (!value) return [];
