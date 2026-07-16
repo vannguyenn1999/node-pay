@@ -1,7 +1,7 @@
 import { StatusCodes } from "http-status-codes"
 
 import { cloudinary } from '~/config/cloudinary.js';
-import { ApiError } from '../utils/ApiError.js';
+import ApiError from '../utils/ApiError.js';
 import ProductVariantModel from '../models/productVariantModel.js';
 import ProductModel from '../models/productModel.js';
 import SerieModel from "~/models/serieModel.js";
@@ -40,8 +40,7 @@ const createProductVariant = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-}
-
+}   
 
 // ? Lấy tất cả biến thể của sản phẩm
 const getAllProductVariant = async (req, res, next) => {
@@ -51,23 +50,59 @@ const getAllProductVariant = async (req, res, next) => {
         const limit = req.query.l || req.query.limit || 8;
         const skip = (page - 1) * limit;
         const sortType = req.query.sort || 'newest';
+        const series = req.query.series || '';
+        const activeParam = req.query.active;
+
+        const role = (req.query.role || req.query.r || '').toString().trim().toLowerCase();
+        const isAdmin = role === 'admin';
+        let activeFilter = {};
+
+        if (isAdmin) {
+            if (activeParam === 'true' || activeParam === 'false') {
+                activeFilter = { isActive: activeParam === 'true' };
+            }
+        } else {
+            activeFilter = { isActive: true };
+        }
 
         let productFilter = {};
-        if (search.trim()) {
-            const products = await ProductModel.find({
-                name: { $regex: search, $options: 'i' },
+        let productQuery = {
+            ...activeFilter,
+        };
+
+        if (series) {
+            const seriesDoc = await SerieModel.findOne({
+                $or: [
+                    { _id: series },
+                    { slug: series },
+                ],
                 isActive: true,
             }).select('_id');
 
-            productFilter = {
-                product: { $in: products.map((product) => product._id) },
+            if (seriesDoc) {
+                productQuery = {
+                    ...productQuery,
+                    serie: seriesDoc._id,
+                };
+            }
+        }
+
+        if (search.trim()) {
+            productQuery = {
+                ...productQuery,
+                name: { $regex: search, $options: 'i' },
             };
         }
 
-        // Đếm tổng số biến thể sản phẩm sau khi áp dụng filter (search, isActive)
+        const products = await ProductModel.find(productQuery).select('_id');
+        productFilter = {
+            product: { $in: products.map((product) => product._id) },
+        };
+
+        // Đếm tổng số biến thể sản phẩm sau khi áp dụng filter (search, isActive, series)
         const totalVariants = await ProductVariantModel.countDocuments({
             ...productFilter,
-            isActive: true,
+            ...activeFilter,
         });
 
         const sortOption = sortType === 'price_asc'
@@ -78,7 +113,7 @@ const getAllProductVariant = async (req, res, next) => {
 
         const variants = await ProductVariantModel.find({
             ...productFilter,
-            isActive: true,
+            ...activeFilter,
         }).limit(limit).skip(skip)
             .populate({
                 path: 'product',
@@ -137,19 +172,49 @@ const getProductVariant = async (req, res, next) => {
 // ? Cập nhật biến thể sản phầm
 const updateProductVariant = async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const { storage, color, condition, region, price, originalPrice, stock } = req.body;
-        const product = await ProductVariantModel.findById(id);
+        const { productSlug } = req.params;
+        const { storage, color, condition, region, price, originalPrice, stock , isActive , productMainId } = req.body;
+        let skuName = '';
+
+        const product = await ProductVariantModel.findById(productSlug);
         if (!product) {
             throw new ApiError(StatusCodes.NOT_FOUND, 'Sản phẩm không tồn tại !');
         }
-        product.storage = storage || product.storage;
-        product.color = color || product.color;
-        product.price = price || product.price;
-        product.condition = condition || product.condition;
-        product.region = region || product.region;
-        product.originalPrice = originalPrice || product.originalPrice;
-        product.region = stock || product.stock;
+        if(productMainId) {
+            const existingProduct = await ProductModel.findById(productMainId);
+            if (!existingProduct) {
+                throw new ApiError(StatusCodes.NOT_FOUND, 'Sản phẩm gốc không tồn tại !');
+            }
+            skuName = existingProduct.name
+            product.product = productMainId;
+        }else {
+            const existingProduct1 = await ProductModel.findById(product.product);
+            skuName = existingProduct1.name
+        }
+        if(req.file) {
+            if (product.imageColorPublicId) {
+                cloudinary.uploader.destroy(product.imageColorPublicId, (error, result) => {
+                    if (error) {
+                        console.error('Error:', error);
+                    } else {
+                        console.log('Result:', result);
+                    }
+                });
+            }
+        }
+        
+        if(storage) product.storage = storage;
+        if(color) product.color = color;
+        if(condition) product.condition = condition;
+        if(region) product.region = region;
+        if(price) product.price = price;
+        if(originalPrice) product.originalPrice = originalPrice;
+        if(stock) product.stock = stock;
+        if(storage || color || condition) product.sku = `${convertName(skuName)}-${storage.toUpperCase()}-${removeVietnameseTones(color.split(' ')[0].toUpperCase())}-${condition.toUpperCase()}`;
+        product.isActive = isActive !== undefined ? isActive : product.isActive;
+        product.imageColor = req.file ? req.file.path : product.imageColor;;
+        product.imageColorPublicId = req.file ? req.file.filename : product.imageColorPublicId;
+        console.log("product" , product)
         await product.save();
         res.status(StatusCodes.OK).json({
             success: true,
@@ -164,11 +229,12 @@ const updateProductVariant = async (req, res, next) => {
 // ? Xoá biến thể sản phầm
 const deleteProductVariant = async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const productVariant = await ProductVariantModel.findById(id);
+        const { productSlug } = req.params;
+        console.log("first" , productSlug)
+        const productVariant = await ProductVariantModel.findById(productSlug);
         if (!productVariant) {
             throw new ApiError(StatusCodes.NOT_FOUND, 'Biến thể sản phẩm không tồn tại !');
-        }
+        } 
         try {
             if (productVariant.imagesPublicId && productVariant.imagesPublicId.length > 0) {
                 cloudinary.uploader.destroy(productVariant.imagesPublicId, (error, result) => {
@@ -179,10 +245,21 @@ const deleteProductVariant = async (req, res, next) => {
                     }
                 });
             }
+
+            if (productVariant.imageColorPublicId) {
+                cloudinary.uploader.destroy(productVariant.imageColorPublicId, (error, result) => {
+                    if (error) {
+                        console.error('Error:', error);
+                    } else {
+                        console.log('Result:', result);
+                    }
+                });
+            }
         } catch (error) {
             console.log("error : ", error)
         }
-        await productVariant.remove();
+        
+        await ProductVariantModel.findByIdAndDelete(productSlug);
         res.status(StatusCodes.OK).json({
             success: true,
             message: 'Xóa sản phẩm thành công !',

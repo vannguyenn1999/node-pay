@@ -147,7 +147,6 @@ const updateUser = async (req ,res , next) => {
 
       const { email, username , phone , address } = req.body;
       if(email !== user.email){
-        console.log(11111)
         return res.status(401).json({ message: 'Người dùng không tồn tại !' });
       }
 

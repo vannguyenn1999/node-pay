@@ -2,7 +2,7 @@ import {StatusCodes} from "http-status-codes"
 
 import { slugify, randomStringSecure } from '~/utils/formartter';
 import { cloudinary } from '~/config/cloudinary.js';
-import { ApiError } from '../utils/ApiError.js';
+import ApiError from '../utils/ApiError.js';
 import ProductModel from '../models/productModel.js';
 
 // ? Hàm lấy danh sách sản phẩm, hỗ trợ tìm kiếm theo từ khóa (search), phân trang (page, limit) và lọc theo slug
