@@ -5,6 +5,8 @@ import {StatusCodes} from "http-status-codes"
 import { ENV } from '~/config/environment.js';
 import UserModel from '~/models/userModel.js';
 import { cloudinary } from '~/config/cloudinary.js';
+import PayModel from '~/models/payModel.js';
+import VipTierModel from '~/models/vipTierModel.js';
 
 const login = async (req, res, next) => {
   try {
@@ -88,8 +90,54 @@ const getProfile = async (req, res, next) => {
     }
     try {
       const decoded = jwt.verify(token, ENV.JWT_SECRET);
-      const user = await UserModel.findById(decoded.id).select('email').select('name').select('phone').select('address').select('userImage').select('role');
-      res.status(200).json({ user }); // Trả về thông tin người dùng
+      const user = await UserModel.findById(decoded.id).select('email name phone address userImage role');
+      if (!user) {
+        return res.status(404).json({ message: 'Người dùng không tồn tại!' });
+      }
+
+      // Tính toán thông tin VIP
+      const paidOrders = await PayModel.find({ user: user._id, status: 'PAID' });
+      const totalSpent = paidOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
+      const tiers = await VipTierModel.find({}).sort({ minSpent: 1 });
+
+      let currentTier = null;
+      let nextTier = null;
+
+      for (let i = 0; i < tiers.length; i++) {
+        if (totalSpent >= tiers[i].minSpent) {
+          currentTier = tiers[i];
+        } else {
+          nextTier = tiers[i];
+          break;
+        }
+      }
+
+      const userObject = {
+        ...user.toObject(),
+        totalSpent,
+        currentTier: currentTier ? {
+          _id: currentTier._id,
+          name: currentTier.name,
+          minSpent: currentTier.minSpent,
+          discount: currentTier.discount,
+          color: currentTier.color
+        } : {
+          name: 'Thành viên thường',
+          minSpent: 0,
+          discount: 0,
+          color: ''
+        },
+        nextTier: nextTier ? {
+          name: nextTier.name,
+          minSpent: nextTier.minSpent,
+          discount: nextTier.discount,
+          color: nextTier.color,
+          needed: nextTier.minSpent - totalSpent
+        } : null
+      };
+
+      res.status(200).json({ user: userObject }); // Trả về thông tin người dùng kèm VIP
     } catch (error) {
       res.status(401).json({ message: 'Invalid token', error });
     }

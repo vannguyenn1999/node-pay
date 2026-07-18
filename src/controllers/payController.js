@@ -6,6 +6,7 @@ import ProductModel from '~/models/productModel.js';
 import PayModel from '~/models/payModel.js';
 import UserModel from '~/models/userModel.js';
 import PAYOSSS from '~/config/payos';
+import VipTierModel from '~/models/vipTierModel.js';
 
 // ? Tạo 1 thanh toán mới
 const createPayment = async (req , res , next) => {
@@ -42,15 +43,58 @@ const createPayment = async (req , res , next) => {
            });
         }
         
+        // Lấy thông tin VIP của người dùng để áp dụng chiết khấu
+        const userId = req.user.id;
+        const paidOrders = await PayModel.find({ user: userId, status: 'PAID' });
+        const totalSpent = paidOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
+        const tiers = await VipTierModel.find({}).sort({ minSpent: 1 });
+        let currentTier = null;
+        for (let i = 0; i < tiers.length; i++) {
+            if (totalSpent >= tiers[i].minSpent) {
+                currentTier = tiers[i];
+            } else {
+                break;
+            }
+        }
+
+        const discountPercent = currentTier ? currentTier.discount : 0;
+        const discountedAmount = Math.round(amount * (1 - discountPercent / 100));
+
+        // Chuẩn bị danh sách sản phẩm đã giảm giá cho môi trường thực tế (để tổng tiền items khớp với amount)
+        let calculatedSum = 0;
+        const paymentItems = [];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const discountedPrice = Math.round(item.price * (1 - discountPercent / 100));
+            if (i === items.length - 1) {
+                const remainingAmount = discountedAmount - calculatedSum;
+                const adjustedPrice = Math.round(remainingAmount / item.quantity);
+                paymentItems.push({
+                    name: item.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').slice(0, 20),
+                    quantity: item.quantity,
+                    price: adjustedPrice
+                });
+            } else {
+                paymentItems.push({
+                    name: item.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').slice(0, 20),
+                    quantity: item.quantity,
+                    price: discountedPrice
+                });
+                calculatedSum += discountedPrice * item.quantity;
+            }
+        }
+
         const orderCode = Date.now(); // Mã đơn hàng phải là số (int) và không trùng lặp
         const paymentData = {    
             orderCode: orderCode,
-            // amount: amount, // Số tiền (VND)
-            amount: 2000, // Số tiền (VND)
-            description: `TT đơn hàng #${orderCode}`,
+            amount: 2000, // Số tiền test (VND)
+            // amount: discountedAmount, // Sử dụng dòng này cho môi trường thực tế (production)
+            description: discountPercent > 0 ? `DH-${orderCode}-VIP` : `DH-${orderCode}`, // Tối đa 25 ký tự không dấu và không chứa ký tự đặc biệt
             returnUrl: 'http://localhost:5173/mypay', // URL khi user hủy thanh toán 
             cancelUrl: 'http://localhost:8080/api/v1/pays/cancel-payment', // URL khi thanh toán xong
-            items: items,
+            items: [{ name: "Thanh toan don hang", quantity: 1, price: 2000 }], // Khớp với số tiền 2000 VND test
+            // items: paymentItems, // Sử dụng dòng này cho môi trường thực tế (production)
         };
         
         const payUrl = await PAYOSSS.paymentRequests.create(paymentData);
@@ -63,7 +107,7 @@ const createPayment = async (req , res , next) => {
         const newPay = {
             user: req.user.id,
             items: order.map(item => {return { productVariant: item.variantId, quantity: item.quantity }}),
-            totalAmount: amount,
+            totalAmount: discountedAmount, // Lưu tổng tiền đã được giảm giá VIP
             orderCode: orderCode,
             info : infoUser,
             paymentLinkId : payUrl.paymentLinkId || "",

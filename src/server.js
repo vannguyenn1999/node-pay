@@ -6,6 +6,7 @@ import { CONNECT_TO_MONGO } from '~/config/mongodb.js';
 import { CORS } from '~/config/cors.js';
 import API_V1 from '~/routes/v1/index.js';
 import { errorHandlingMiddleware } from '~/middlewares/errorHandlingMiddleware.js';
+import { seedDefaultVipTiers } from '~/utils/vipSeeder.js';
 
 // Force DNS resolution to prefer IPv4 first and use fallback IPv4 DNS servers (Google/Cloudflare)
 // to avoid ECONNREFUSED/timeout errors caused by broken local IPv6 DNS configuration.
@@ -45,6 +46,7 @@ const START_SERVER = () => {
 (async () => {
   try {
     await CONNECT_TO_MONGO();
+    await seedDefaultVipTiers();
     START_SERVER();
   } catch (error) {
     console.error('Error connecting to MongoDB:', error);

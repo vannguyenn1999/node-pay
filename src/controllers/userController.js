@@ -1,6 +1,8 @@
 import { StatusCodes } from 'http-status-codes';
 import UserModel from '~/models/userModel.js';
 import ApiError from '~/utils/ApiError.js';
+import PayModel from '~/models/payModel.js';
+import VipTierModel from '~/models/vipTierModel.js';
 
 const getAllUsers = async (req, res, next) => {
   try {
@@ -8,9 +10,62 @@ const getAllUsers = async (req, res, next) => {
       .select('-password -refreshToken')
       .sort({ createdAt: -1 });
 
+    const paidSums = await PayModel.aggregate([
+      { $match: { status: 'PAID' } },
+      { $group: { _id: '$user', totalSpent: { $sum: '$totalAmount' } } }
+    ]);
+
+    const spentMap = {};
+    paidSums.forEach(item => {
+      if (item._id) {
+        spentMap[item._id.toString()] = item.totalSpent;
+      }
+    });
+
+    const tiers = await VipTierModel.find({}).sort({ minSpent: 1 });
+
+    const usersWithVip = users.map(user => {
+      const totalSpent = spentMap[user._id.toString()] || 0;
+      let currentTier = null;
+      let nextTier = null;
+
+      for (let i = 0; i < tiers.length; i++) {
+        if (totalSpent >= tiers[i].minSpent) {
+          currentTier = tiers[i];
+        } else {
+          nextTier = tiers[i];
+          break;
+        }
+      }
+
+      return {
+        ...user.toObject(),
+        totalSpent,
+        currentTier: currentTier ? {
+          _id: currentTier._id,
+          name: currentTier.name,
+          minSpent: currentTier.minSpent,
+          discount: currentTier.discount,
+          color: currentTier.color
+        } : {
+          name: 'Thành viên thường',
+          minSpent: 0,
+          discount: 0,
+          color: ''
+        },
+        nextTier: nextTier ? {
+          name: nextTier.name,
+          minSpent: nextTier.minSpent,
+          discount: nextTier.discount,
+          color: nextTier.color,
+          needed: nextTier.minSpent - totalSpent
+        } : null
+      };
+    });
+
     res.status(StatusCodes.OK).json({
       success: true,
-      data: users,
+      data: usersWithVip,
       message: 'Lấy danh sách người dùng thành công!',
     });
   } catch (error) {
