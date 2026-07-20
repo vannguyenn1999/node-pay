@@ -8,4 +8,7 @@ const adminAuth = [AuthMiddlewares.checkAuthorization, AuthMiddlewares.checkAdmi
 StatisticalRouter.route('/')
   .get(...adminAuth, StatisticalController.getStatistics);
 
+StatisticalRouter.route('/profit-loss')
+  .get(...adminAuth, StatisticalController.getProfitLossStatistics);
+
 export default StatisticalRouter;

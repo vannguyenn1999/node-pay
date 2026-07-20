@@ -12,14 +12,14 @@ import CategoryModel from "~/models/categoryModel.js";
 // ? tạo mới 1 biến thể sản phầm
 const createProductVariant = async (req, res, next) => {
     try {
-        const { product, storage, color, condition, region, price, originalPrice, stock } = req.body;
-        const existingProduct = await ProductModel.findById(product);
+        const { productMainId, storage, color, condition, region, price, originalPrice, stock } = req.body;
+        const existingProduct = await ProductModel.findById(productMainId);
         if (!existingProduct) {
             throw new ApiError(StatusCodes.NOT_FOUND, 'Sản phẩm gốc không tồn tại !');
         }
         const sku = `${convertName(existingProduct.name)}-${storage.toUpperCase()}-${removeVietnameseTones(color.split(' ')[0].toUpperCase())}-${condition.toUpperCase()}`;
         const bodyData = {
-            product: product,
+            product: productMainId,
             sku: sku,
             storage: storage,
             color: color,

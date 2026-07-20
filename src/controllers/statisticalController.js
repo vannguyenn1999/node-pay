@@ -256,6 +256,192 @@ const getStatistics = async (req, res, next) => {
   }
 };
 
+const resolveProfitRange = (req) => {
+  const range = req.query.range || '1m';
+  const startDateQuery = req.query.startDate;
+  const endDateQuery = req.query.endDate;
+
+  if (startDateQuery || endDateQuery) {
+    const startDate = startDateQuery ? new Date(`${startDateQuery}T00:00:00`) : null;
+    const endDate = endDateQuery ? new Date(`${endDateQuery}T23:59:59.999`) : null;
+
+    if (startDate && !Number.isNaN(startDate.getTime())) {
+      startDate.setHours(0, 0, 0, 0);
+    }
+
+    if (endDate && !Number.isNaN(endDate.getTime())) {
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    return {
+      range,
+      startDate,
+      endDate,
+      label: startDateQuery && endDateQuery ? 'custom' : 'custom',
+    };
+  }
+
+  const now = new Date();
+  const endDate = new Date(now);
+  endDate.setHours(23, 59, 59, 999);
+
+  let startDate = new Date(now);
+  startDate.setHours(0, 0, 0, 0);
+
+  switch (range) {
+    case '1w':
+      startDate.setDate(now.getDate() - 6);
+      return { range, startDate, endDate, label: '1 tuần' };
+    case '3m':
+      startDate.setMonth(now.getMonth() - 2);
+      return { range, startDate, endDate, label: '3 tháng' };
+    case '6m':
+      startDate.setMonth(now.getMonth() - 5);
+      return { range, startDate, endDate, label: '6 tháng' };
+    case '1m':
+    default:
+      startDate.setMonth(now.getMonth() - 1);
+      return { range, startDate, endDate, label: '1 tháng' };
+  }
+};
+
+const getProfitLossStatistics = async (req, res, next) => {
+  try {
+    const { range, startDate, endDate, label } = resolveProfitRange(req);
+    const inventoryFilter = {};
+    if (startDate && endDate) {
+      inventoryFilter.$or = [
+        { createdAt: { $gte: startDate, $lte: endDate } },
+        { updatedAt: { $gte: startDate, $lte: endDate } },
+      ];
+    }
+
+    const inventoryVariants = await ProductVariantModel.find(inventoryFilter, 'originalPrice price stock createdAt updatedAt');
+    const totalImportedAmount = inventoryVariants.reduce((sum, variant) => {
+      const costPrice = variant.originalPrice ?? variant.price ?? 0;
+      return sum + costPrice * (variant.stock ?? 0);
+    }, 0);
+
+    const salesFilter = { status: 'PAID' };
+    if (startDate && endDate) {
+      salesFilter.$or = [
+        { paymentDate: { $gte: startDate, $lte: endDate } },
+        { createdAt: { $gte: startDate, $lte: endDate } },
+      ];
+    }
+
+    const paidOrders = await PayModel.find(salesFilter)
+      .populate({
+        path: 'items.productVariant',
+        select: 'originalPrice price',
+      });
+
+    let totalSoldAmount = 0;
+    let totalSoldCostAmount = 0;
+    let totalSoldQuantity = 0;
+    let totalPaidOrders = 0;
+    const chartMap = new Map();
+
+    const formatDateKey = (date) => {
+      const value = new Date(date);
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const getChartEntry = (dateKey) => chartMap.get(dateKey) || {
+      date: dateKey,
+      revenue: 0,
+      cost: 0,
+      profit: 0,
+      orders: 0,
+      importedAmount: 0,
+      importedQuantity: 0,
+    };
+
+    paidOrders.forEach((order) => {
+      const orderDateValue = order.paymentDate || order.createdAt || order.updatedAt || new Date();
+      const orderDateKey = formatDateKey(orderDateValue);
+      const existingEntry = getChartEntry(orderDateKey);
+
+      totalSoldAmount += Number(order.totalAmount || 0);
+      totalPaidOrders += 1;
+      existingEntry.revenue += Number(order.totalAmount || 0);
+      existingEntry.orders += 1;
+
+      (order.items || []).forEach((item) => {
+        const quantity = Number(item.quantity || 0);
+        const costPrice = item.productVariant?.originalPrice ?? item.productVariant?.price ?? 0;
+        const itemCost = costPrice * quantity;
+        totalSoldQuantity += quantity;
+        totalSoldCostAmount += itemCost;
+        existingEntry.cost += itemCost;
+      });
+
+      existingEntry.profit = existingEntry.revenue - existingEntry.cost;
+      chartMap.set(orderDateKey, existingEntry);
+    });
+
+    inventoryVariants.forEach((variant) => {
+      const inventoryDateValue = variant.createdAt || variant.updatedAt || new Date();
+      const inventoryDateKey = formatDateKey(inventoryDateValue);
+      const existingEntry = getChartEntry(inventoryDateKey);
+      const costPrice = variant.originalPrice ?? variant.price ?? 0;
+      const importedAmount = costPrice * (variant.stock ?? 0);
+      existingEntry.importedAmount += importedAmount;
+      existingEntry.importedQuantity += variant.stock ?? 0;
+      chartMap.set(inventoryDateKey, existingEntry);
+    });
+
+    const profitLossAmount = totalSoldAmount - totalSoldCostAmount;
+    const chartData = [];
+    const cursorDate = new Date(startDate);
+    const endCursorDate = new Date(endDate);
+
+    cursorDate.setHours(0, 0, 0, 0);
+    endCursorDate.setHours(23, 59, 59, 999);
+
+    while (cursorDate <= endCursorDate) {
+      const dayKey = formatDateKey(cursorDate);
+      const entry = getChartEntry(dayKey);
+      chartData.push(entry);
+      cursorDate.setDate(cursorDate.getDate() + 1);
+    }
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      data: {
+        range: {
+          key: range,
+          label,
+          startDate: startDate ? startDate.toISOString() : null,
+          endDate: endDate ? endDate.toISOString() : null,
+        },
+        imported: {
+          totalImportedAmount,
+          totalImportedQuantity: inventoryVariants.reduce((sum, variant) => sum + (variant.stock ?? 0), 0),
+        },
+        chartData,
+        sales: {
+          totalSoldAmount,
+          totalSoldQuantity,
+          totalPaidOrders,
+        },
+        profitLoss: {
+          totalSoldCostAmount,
+          amount: profitLossAmount,
+          type: profitLossAmount > 0 ? 'profit' : profitLossAmount < 0 ? 'loss' : 'balanced',
+        },
+      },
+      message: 'Lấy dữ liệu lợi nhuận nhập bán thành công!',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const StatisticalController = {
   getStatistics,
+  getProfitLossStatistics,
 };
