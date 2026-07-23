@@ -330,7 +330,13 @@ const getProfitLossStatistics = async (req, res, next) => {
       ];
     }
 
-    const paidOrders = await PayModel.find(salesFilter)
+    const filteredPaidOrders = await PayModel.find(salesFilter)
+      .populate({
+        path: 'items.productVariant',
+        select: 'originalPrice price',
+      });
+
+    const allPaidOrders = await PayModel.find({ status: 'PAID' })
       .populate({
         path: 'items.productVariant',
         select: 'originalPrice price',
@@ -340,6 +346,8 @@ const getProfitLossStatistics = async (req, res, next) => {
     let totalSoldCostAmount = 0;
     let totalSoldQuantity = 0;
     let totalPaidOrders = 0;
+    let totalAllTimeSoldCostAmount = 0;
+    let totalAllTimeSoldAmount = 0;
     const chartMap = new Map();
 
     const formatDateKey = (date) => {
@@ -360,7 +368,7 @@ const getProfitLossStatistics = async (req, res, next) => {
       importedQuantity: 0,
     };
 
-    paidOrders.forEach((order) => {
+    filteredPaidOrders.forEach((order) => {
       const orderDateValue = order.paymentDate || order.createdAt || order.updatedAt || new Date();
       const orderDateKey = formatDateKey(orderDateValue);
       const existingEntry = getChartEntry(orderDateKey);
@@ -378,9 +386,18 @@ const getProfitLossStatistics = async (req, res, next) => {
         totalSoldCostAmount += itemCost;
         existingEntry.cost += itemCost;
       });
-
       existingEntry.profit = existingEntry.revenue - existingEntry.cost;
       chartMap.set(orderDateKey, existingEntry);
+    });
+    console.log("totalSoldCostAmount" , totalSoldCostAmount)
+
+    allPaidOrders.forEach((order) => {
+      totalAllTimeSoldAmount += Number(order.totalAmount || 0);
+      (order.items || []).forEach((item) => {
+        const quantity = Number(item.quantity || 0);
+        const costPrice = item.productVariant?.originalPrice ?? item.productVariant?.price ?? 0;
+        totalAllTimeSoldCostAmount += costPrice * quantity;
+      });
     });
 
     inventoryVariants.forEach((variant) => {
@@ -394,7 +411,7 @@ const getProfitLossStatistics = async (req, res, next) => {
       chartMap.set(inventoryDateKey, existingEntry);
     });
 
-    const profitLossAmount = totalSoldAmount - totalSoldCostAmount;
+    const profitLossAmount = totalAllTimeSoldAmount - totalAllTimeSoldCostAmount;
     const chartData = [];
     const cursorDate = new Date(startDate);
     const endCursorDate = new Date(endDate);
@@ -429,7 +446,7 @@ const getProfitLossStatistics = async (req, res, next) => {
           totalPaidOrders,
         },
         profitLoss: {
-          totalSoldCostAmount,
+          totalSoldCostAmount: totalAllTimeSoldCostAmount,
           amount: profitLossAmount,
           type: profitLossAmount > 0 ? 'profit' : profitLossAmount < 0 ? 'loss' : 'balanced',
         },
