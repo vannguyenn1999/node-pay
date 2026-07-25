@@ -9,43 +9,85 @@ import PAYOSSS from '~/config/payos';
 import VipTierModel from '~/models/vipTierModel.js';
 import VoucherModel from '~/models/voucherModel.js';
 import VoucherUsageModel from '~/models/voucherUsageModel.js';
+import FlashSaleItemModel from '~/models/flashSaleItemModel.js';
+import FlashSaleEventModel from '~/models/flashSaleEventModel.js';
 
 // ? Tạo 1 thanh toán mới
-const createPayment = async (req , res , next) => {
+const createPayment = async (req, res, next) => {
     try {
         let amount = 0
         const items = []
         const order = req.body.orders;
         const infoUser = req.body.user;
         const voucherCode = req.body.voucherCode;
-      
+        const orderItemsToSave = [];
+        const now = new Date();
+
         // Tính tổng số tiền từ các mặt hàng trong đơn hàng
         for (const item of order) {
-           const productVariant = await ProductVariantModel.findById(item.variantId).select('price stock sku product');
-           if (!productVariant) {
-               return res.status(StatusCodes.NOT_FOUND).json({
-                   success: false,
-                   message: 'Sản phẩm không tồn tại!'
-               });
-           }
+            const productVariant = await ProductVariantModel.findById(item.variantId).select('price stock sku product');
+            if (!productVariant) {
+                return res.status(StatusCodes.NOT_FOUND).json({
+                    success: false,
+                    message: 'Sản phẩm không tồn tại!'
+                });
+            }
 
-           const product = await ProductModel.findById(productVariant.product).select('name');
-         
-           if (productVariant.stock < item.quantity) {
-               return res.status(StatusCodes.BAD_REQUEST).json({
-                   success: false,
-                   message: 'Số lượng sản phẩm trong kho không đủ!'
-               });
-           }
+            const product = await ProductModel.findById(productVariant.product).select('name');
 
-           amount += productVariant.price * item.quantity;
-           items.push({
+            if (productVariant.stock < item.quantity) {
+                return res.status(StatusCodes.BAD_REQUEST).json({
+                    success: false,
+                    message: 'Số lượng sản phẩm trong kho không đủ!'
+                });
+            }
+
+            // Kiểm tra biến thể có đang nằm trong sự kiện Flash Sale hoạt động hay không
+            let unitPrice = productVariant.price;
+            let isFlashSale = false;
+            let flashSaleItemRef = null;
+
+            const flashSaleItem = await FlashSaleItemModel.findOne({
+                productVariant: item.variantId,
+                isActive: true,
+            }).populate('flashSaleEvent');
+
+            if (
+                flashSaleItem &&
+                flashSaleItem.flashSaleEvent &&
+                flashSaleItem.flashSaleEvent.isActive &&
+                ['scheduled', 'active'].includes(flashSaleItem.flashSaleEvent.status) &&
+                new Date(flashSaleItem.flashSaleEvent.startTime) <= now &&
+                new Date(flashSaleItem.flashSaleEvent.endTime) >= now &&
+                (flashSaleItem.flashSaleStock - flashSaleItem.soldCount) >= item.quantity
+            ) {
+                unitPrice = flashSaleItem.flashSalePrice;
+                isFlashSale = true;
+                flashSaleItemRef = flashSaleItem._id;
+
+                // Cập nhật số lượng đã bán của Flash Sale Item
+                flashSaleItem.soldCount += item.quantity;
+                await flashSaleItem.save();
+            }
+
+            amount += unitPrice * item.quantity;
+            items.push({
                 name: product.name,
                 quantity: item.quantity,
-                price: productVariant.price
-           });
+                price: unitPrice
+            });
+
+            orderItemsToSave.push({
+                productVariant: item.variantId,
+                quantity: item.quantity,
+                priceAtPurchase: unitPrice,
+                originalPrice: productVariant.price,
+                isFlashSale: isFlashSale,
+                flashSalePrice: isFlashSale ? unitPrice : undefined,
+                flashSaleItem: flashSaleItemRef,
+            });
         }
-        
+
         // Lấy thông tin VIP của người dùng để áp dụng chiết khấu
         const userId = req.user.id;
         const paidOrders = await PayModel.find({ user: userId, status: 'PAID' });
@@ -174,7 +216,7 @@ const createPayment = async (req , res , next) => {
         }
 
         const orderCode = Date.now(); // Mã đơn hàng phải là số (int) và không trùng lặp
-        const paymentData = {    
+        const paymentData = {
             orderCode: orderCode,
             amount: 2000, // Số tiền test (VND)
             // amount: finalAmount, // Sử dụng dòng này cho môi trường thực tế (production)
@@ -184,7 +226,7 @@ const createPayment = async (req , res , next) => {
             items: [{ name: "Thanh toan don hang", quantity: 1, price: 2000 }], // Khớp với số tiền 2000 VND test
             // items: paymentItems, // Sử dụng dòng này cho môi trường thực tế (production)
         };
-        
+
         const payUrl = await PAYOSSS.paymentRequests.create(paymentData);
         if (!payUrl) {
             return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
@@ -194,12 +236,12 @@ const createPayment = async (req , res , next) => {
         }
         const newPay = {
             user: req.user.id,
-            items: order.map(item => {return { productVariant: item.variantId, quantity: item.quantity }}),
-            totalAmount: finalAmount, 
+            items: orderItemsToSave,
+            totalAmount: finalAmount,
             orderCode: orderCode,
-            info : infoUser,
-            paymentLinkId : payUrl.paymentLinkId || "",
-            checkoutUrl : payUrl.checkoutUrl || "",
+            info: infoUser,
+            paymentLinkId: payUrl.paymentLinkId || "",
+            checkoutUrl: payUrl.checkoutUrl || "",
             voucher: voucher ? voucher._id : null,
             voucherDiscount: voucherDiscount,
         }
@@ -222,14 +264,15 @@ const createPayment = async (req , res , next) => {
             data: payUrl,
             message: 'Tạo thanh toán thành công !',
         });
-        
+
     } catch (error) {
         next(error);
     }
 }
 
+
 // ? Lấy thông tin thanh toán theo orderCode
-const getPayment = async (req , res , next) => {
+const getPayment = async (req, res, next) => {
     try {
         const { orderCode } = req.params;
         const paymentInfo = await PAYOSSS.paymentRequests.get(orderCode);
@@ -238,21 +281,21 @@ const getPayment = async (req , res , next) => {
             data: paymentInfo,
             message: 'Lấy thông tin thanh toán thành công !',
         });
-    }catch (error) {
+    } catch (error) {
         next(error);
     }
 }
 
 // ? Xử lý webhook từ PayO SSS
-const handleWebhook = async (req , res , next) => {
+const handleWebhook = async (req, res, next) => {
     try {
         const webhookData = req.body;
         // console.log("webhookData" , webhookData)
-        if(!webhookData) {
+        if (!webhookData) {
             return res.status(StatusCodes.BAD_REQUEST).json({
                 success: false,
                 message: 'Dữ liệu webhook không hợp lệ !',
-            }); 
+            });
         }
 
         const orderCode = webhookData.data.orderCode;
@@ -281,18 +324,23 @@ const handleWebhook = async (req , res , next) => {
     }
 }
 
-const getPaymentHistoryDetail = async (req , res , next) => {
+const getPaymentHistoryDetail = async (req, res, next) => {
     const { orderCode } = req.params;
     try {
         const userId = req.user.id;
-        const paymentHistoryDetail = await PayModel.findOne({ user: userId, orderCode: orderCode }).populate({
-            path: 'items.productVariant',
-            select: 'sku price color storage imageColor product condition',
-            populate: {
-                path: 'product',
-                select: 'name slug mainImage'
-            }
-        });
+        const paymentHistoryDetail = await PayModel.findOne({ user: userId, orderCode: orderCode })
+            .populate({
+                path: 'items.productVariant',
+                select: 'sku price color storage imageColor product condition',
+                populate: {
+                    path: 'product',
+                    select: 'name slug mainImage'
+                }
+            })
+            .populate({
+                path: 'items.flashSaleItem',
+                select: 'flashSalePrice flashSaleStock'
+            });
         res.status(StatusCodes.OK).json({
             success: true,
             data: paymentHistoryDetail,
@@ -304,7 +352,7 @@ const getPaymentHistoryDetail = async (req , res , next) => {
 }
 
 // ? Lấy thông tin lịch sử đơn hàng của người dùng
-const getPaymentHistory = async (req , res , next) => {
+const getPaymentHistory = async (req, res, next) => {
     try {
         const userId = req.user.id;
         const paymentHistory = await PayModel.find({ user: userId }).sort({ createdAt: -1 });
@@ -314,16 +362,16 @@ const getPaymentHistory = async (req , res , next) => {
             data: paymentHistory,
             message: 'Lấy thông tin lịch sử đơn hàng của người dùng thành công !',
         });
-    }catch (error) {
+    } catch (error) {
         next(error);
     }
 }
 
 // ? Xử lý hoá đơn bị huỷ hoặc thanh toán thất bại (nếu cần thiết)
-const handlePaymentFailure = async (req , res , next) => {
+const handlePaymentFailure = async (req, res, next) => {
     try {
         // console.log("req" , req.query)
-        const { orderCode , status , cancel } = req.query;
+        const { orderCode, status, cancel } = req.query;
         if (!orderCode || !status) {
             return res.status(StatusCodes.BAD_REQUEST).json({
                 success: false,
@@ -341,24 +389,24 @@ const handlePaymentFailure = async (req , res , next) => {
             paymentInfo.status = 'CANCELLED';
             await paymentInfo.save();
             return res.status(StatusCodes.OK).json({
-            success: true,
-            message: 'Hoá đơn đã bị huỷ thành công !',
-        });
+                success: true,
+                message: 'Hoá đơn đã bị huỷ thành công !',
+            });
         }
         res.status(StatusCodes.OK).json({
             success: true,
             message: 'Hoá đơn đã bị huỷ hoặc thanh toán thất bại !',
         });
-    }catch (error) {
+    } catch (error) {
         console.error('Lỗi khi xử lý hoá đơn thất bại:', error);
         next(error);
     }
 }
 
-const getPaymentAdmin = async (req , res , next) => {
+const getPaymentAdmin = async (req, res, next) => {
     try {
         const status = req.query.status || req.query.s || "";
-        const search = req.query.search || ""
+        const search = req.query.search || "";
         const page = parseInt(req.query.page) || 1;
         const skip = (page - 1) * 10;
         const filter = {};
@@ -389,23 +437,28 @@ const getPaymentAdmin = async (req , res , next) => {
             data: paymentHistory,
             message: 'Lấy thông tin lịch sử đơn hàng thành công !',
         });
-        
-    }catch (error) {
+
+    } catch (error) {
         next(error);
     }
 }
 
-const getPaymentAdminDetail = async (req , res , next) => {
+const getPaymentAdminDetail = async (req, res, next) => {
     const { orderCode } = req.params;
     try {
-        const paymentHistoryDetail = await PayModel.findOne({ orderCode: orderCode }).populate({
-            path: 'items.productVariant',
-            select: 'sku price color storage imageColor product condition',
-            populate: {
-                path: 'product',
-                select: 'name slug mainImage'
-            }
-        });
+        const paymentHistoryDetail = await PayModel.findOne({ orderCode: orderCode })
+            .populate({
+                path: 'items.productVariant',
+                select: 'sku price color storage imageColor product condition',
+                populate: {
+                    path: 'product',
+                    select: 'name slug mainImage'
+                }
+            })
+            .populate({
+                path: 'items.flashSaleItem',
+                select: 'flashSalePrice flashSaleStock'
+            });
         res.status(StatusCodes.OK).json({
             success: true,
             data: paymentHistoryDetail,

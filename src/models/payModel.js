@@ -18,6 +18,24 @@ const paySchema = new mongoose.Schema(
           ref: 'ProductVariant',
           required: true,
         },
+        priceAtPurchase: {
+          type: Number,
+        },
+        originalPrice: {
+          type: Number,
+        },
+        isFlashSale: {
+          type: Boolean,
+          default: false,
+        },
+        flashSalePrice: {
+          type: Number,
+        },
+        flashSaleItem: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'FlashSaleItem',
+          default: null,
+        },
       }
     ],
     orderCode : {
