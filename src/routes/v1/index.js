@@ -10,6 +10,8 @@ import PayRouter from '~/routes/v1/payRouter.js';
 import UserRouter from '~/routes/v1/userRoute.js';
 import StatisticalRouter from '~/routes/v1/statisticalRoute.js';
 import VipTierRouter from '~/routes/v1/vipTierRoute.js';
+import VoucherRouter from '~/routes/v1/voucherRoute.js';
+import FlashSaleRouter from '~/routes/v1/flashSaleRoute.js';
 
 const Router = express.Router();
 
@@ -23,5 +25,7 @@ Router.use('/pays', PayRouter);
 Router.use('/users', UserRouter);
 Router.use('/statistics', StatisticalRouter);
 Router.use('/vip-tiers', VipTierRouter);
+Router.use('/vouchers', VoucherRouter);
+Router.use('/flash-sales', FlashSaleRouter);
 
 export default Router;

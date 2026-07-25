@@ -24,7 +24,7 @@ const getAllProducts = async (req, res, next) => {
             filter.slug = { $regex: slug, $options: 'i' };
         }
 
-        const products = await ProductModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).select('-mainImagePublicId -imagesPublicId').populate('category', 'name -_id').populate('serie', 'name -_id');
+        const products = await ProductModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).select('-mainImagePublicId -imagesPublicId').populate('category', 'name').populate('serie', 'name -_id');
         const totalProducts = await ProductModel.countDocuments(filter);
         const totalPages = Math.ceil(totalProducts / limit);
         res.status(StatusCodes.OK).json({

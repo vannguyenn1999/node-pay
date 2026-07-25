@@ -28,7 +28,15 @@ const paySchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
-
+    voucher: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Voucher',
+      default: null,
+    },
+    voucherDiscount: {
+      type: Number,
+      default: 0,
+    },
     status: {
       type: String,
         enum: ['PENDING', 'PAID', 'CANCELLED'],

@@ -7,6 +7,8 @@ import PayModel from '~/models/payModel.js';
 import UserModel from '~/models/userModel.js';
 import PAYOSSS from '~/config/payos';
 import VipTierModel from '~/models/vipTierModel.js';
+import VoucherModel from '~/models/voucherModel.js';
+import VoucherUsageModel from '~/models/voucherUsageModel.js';
 
 // ? Tạo 1 thanh toán mới
 const createPayment = async (req , res , next) => {
@@ -14,7 +16,8 @@ const createPayment = async (req , res , next) => {
         let amount = 0
         const items = []
         const order = req.body.orders;
-        const infoUser = req.body.user
+        const infoUser = req.body.user;
+        const voucherCode = req.body.voucherCode;
       
         // Tính tổng số tiền từ các mặt hàng trong đơn hàng
         for (const item of order) {
@@ -61,6 +64,91 @@ const createPayment = async (req , res , next) => {
         const discountPercent = currentTier ? currentTier.discount : 0;
         const discountedAmount = Math.round(amount * (1 - discountPercent / 100));
 
+        // Validate and calculate Voucher discount if provided
+        let voucher = null;
+        let voucherDiscount = 0;
+        if (voucherCode) {
+            voucher = await VoucherModel.findOne({ code: voucherCode.toUpperCase(), isActive: true });
+            if (!voucher) {
+                return res.status(StatusCodes.BAD_REQUEST).json({
+                    success: false,
+                    message: 'Mã giảm giá không tồn tại hoặc đã bị khóa!'
+                });
+            }
+            const now = new Date();
+            if (voucher.startDate > now || voucher.endDate < now) {
+                return res.status(StatusCodes.BAD_REQUEST).json({
+                    success: false,
+                    message: 'Mã giảm giá đã hết hạn hoặc chưa bắt đầu!'
+                });
+            }
+            if (voucher.usedCount >= voucher.usageLimit) {
+                return res.status(StatusCodes.BAD_REQUEST).json({
+                    success: false,
+                    message: 'Mã giảm giá đã hết lượt sử dụng!'
+                });
+            }
+            const userRedeemedCount = await VoucherUsageModel.countDocuments({
+                user: userId,
+                voucher: voucher._id,
+                status: 'applied',
+            });
+            if (userRedeemedCount >= voucher.limitPerUser) {
+                return res.status(StatusCodes.BAD_REQUEST).json({
+                    success: false,
+                    message: `Bạn đã dùng mã giảm giá này tối đa ${voucher.limitPerUser} lần!`
+                });
+            }
+            if (amount < voucher.minOrderAmount) {
+                return res.status(StatusCodes.BAD_REQUEST).json({
+                    success: false,
+                    message: `Giá trị đơn hàng chưa đạt mức tối thiểu ${voucher.minOrderAmount} để sử dụng mã này!`
+                });
+            }
+
+            // Calculate eligible discount
+            let eligibleAmount = 0;
+            if (voucher.scope === 'all') {
+                eligibleAmount = amount;
+            } else {
+                for (const item of order) {
+                    const productVariant = await ProductVariantModel.findById(item.variantId);
+                    let isEligible = false;
+                    if (voucher.scope === 'variant' && voucher.applicableVariants.map(v => v.toString()).includes(item.variantId)) {
+                        isEligible = true;
+                    } else if (voucher.scope === 'product' && voucher.applicableProducts.map(p => p.toString()).includes(productVariant.product.toString())) {
+                        isEligible = true;
+                    } else if (voucher.scope === 'category') {
+                        const product = await ProductModel.findById(productVariant.product);
+                        if (product.category.toString() === voucher.applicableCategory.toString()) {
+                            isEligible = true;
+                        }
+                    }
+                    if (isEligible) {
+                        eligibleAmount += productVariant.price * item.quantity;
+                    }
+                }
+            }
+
+            if (eligibleAmount > 0) {
+                if (voucher.discountType === 'fixed') {
+                    voucherDiscount = Math.min(voucher.discountValue, eligibleAmount);
+                } else if (voucher.discountType === 'percentage') {
+                    voucherDiscount = (eligibleAmount * voucher.discountValue) / 100;
+                    if (voucher.maxDiscountAmount > 0) {
+                        voucherDiscount = Math.min(voucherDiscount, voucher.maxDiscountAmount);
+                    }
+                }
+            } else {
+                return res.status(StatusCodes.BAD_REQUEST).json({
+                    success: false,
+                    message: 'Đơn hàng không chứa sản phẩm đủ điều kiện áp dụng mã giảm giá này!'
+                });
+            }
+        }
+
+        const finalAmount = Math.max(0, discountedAmount - voucherDiscount);
+
         // Chuẩn bị danh sách sản phẩm đã giảm giá cho môi trường thực tế (để tổng tiền items khớp với amount)
         let calculatedSum = 0;
         const paymentItems = [];
@@ -68,7 +156,7 @@ const createPayment = async (req , res , next) => {
             const item = items[i];
             const discountedPrice = Math.round(item.price * (1 - discountPercent / 100));
             if (i === items.length - 1) {
-                const remainingAmount = discountedAmount - calculatedSum;
+                const remainingAmount = finalAmount - calculatedSum;
                 const adjustedPrice = Math.round(remainingAmount / item.quantity);
                 paymentItems.push({
                     name: item.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').slice(0, 20),
@@ -89,7 +177,7 @@ const createPayment = async (req , res , next) => {
         const paymentData = {    
             orderCode: orderCode,
             amount: 2000, // Số tiền test (VND)
-            // amount: discountedAmount, // Sử dụng dòng này cho môi trường thực tế (production)
+            // amount: finalAmount, // Sử dụng dòng này cho môi trường thực tế (production)
             description: discountPercent > 0 ? `DH-${orderCode}-VIP` : `DH-${orderCode}`, // Tối đa 25 ký tự không dấu và không chứa ký tự đặc biệt
             returnUrl: 'http://localhost:5173/mypay', // URL khi user hủy thanh toán 
             cancelUrl: 'http://localhost:8080/api/v1/pays/cancel-payment', // URL khi thanh toán xong
@@ -107,14 +195,28 @@ const createPayment = async (req , res , next) => {
         const newPay = {
             user: req.user.id,
             items: order.map(item => {return { productVariant: item.variantId, quantity: item.quantity }}),
-            totalAmount: discountedAmount, // Lưu tổng tiền đã được giảm giá VIP
+            totalAmount: finalAmount, 
             orderCode: orderCode,
             info : infoUser,
             paymentLinkId : payUrl.paymentLinkId || "",
             checkoutUrl : payUrl.checkoutUrl || "",
+            voucher: voucher ? voucher._id : null,
+            voucherDiscount: voucherDiscount,
         }
         const pay = new PayModel(newPay);
         await pay.save();
+
+        if (voucher) {
+            await VoucherModel.findByIdAndUpdate(voucher._id, { $inc: { usedCount: 1 } });
+            await VoucherUsageModel.create({
+                user: req.user.id,
+                voucher: voucher._id,
+                bill: pay._id,
+                discountApplied: voucherDiscount,
+                status: 'applied',
+            });
+        }
+
         res.status(StatusCodes.OK).json({
             success: true,
             data: payUrl,

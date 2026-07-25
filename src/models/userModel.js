@@ -32,6 +32,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: false,
     },
+    vipTier: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'VipTier',
+      default: null,
+    },
     role: {
       type: String,
       enum: ['user', 'admin'],
