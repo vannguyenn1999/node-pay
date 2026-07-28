@@ -96,8 +96,26 @@ const addFlashSaleItem = async (req, res, next) => {
   }
 };
 
+const autoUpdateEventStatuses = async () => {
+  const now = new Date();
+  await FlashSaleEventModel.updateMany(
+    { status: { $ne: 'cancelled' }, endTime: { $lt: now }, status: { $ne: 'ended' } },
+    { $set: { status: 'ended' } }
+  );
+  await FlashSaleEventModel.updateMany(
+    { status: { $ne: 'cancelled' }, startTime: { $lte: now }, endTime: { $gte: now }, status: { $ne: 'active' } },
+    { $set: { status: 'active' } }
+  );
+  await FlashSaleEventModel.updateMany(
+    { status: { $ne: 'cancelled' }, startTime: { $gt: now }, status: { $ne: 'scheduled' } },
+    { $set: { status: 'scheduled' } }
+  );
+};
+
 const getAdminEvents = async (req, res, next) => {
   try {
+    await autoUpdateEventStatuses();
+
     const events = await FlashSaleEventModel.find({})
       .populate('applicableCategory', 'name')
       .sort({ startTime: -1 });
@@ -137,6 +155,7 @@ const getAdminEventItems = async (req, res, next) => {
 
 const getActiveFlashSales = async (req, res, next) => {
   try {
+    await autoUpdateEventStatuses();
     const now = new Date();
     // Fetch scheduled or active flash sales that have not ended yet
     const events = await FlashSaleEventModel.find({
