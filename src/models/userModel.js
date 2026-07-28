@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
       lowercase: true, // Nên thêm để tránh trùng lặp email hoa/thường
+      
     },
     password: {
       type: String,
