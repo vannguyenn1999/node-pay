@@ -316,9 +316,9 @@ const getProfitLossStatistics = async (req, res, next) => {
       ];
     }
 
-    const inventoryVariants = await ProductVariantModel.find(inventoryFilter, 'originalPrice price stock createdAt updatedAt');
+    const inventoryVariants = await ProductVariantModel.find({}, 'originalPrice price stock createdAt updatedAt');
     const totalImportedAmount = inventoryVariants.reduce((sum, variant) => {
-      const costPrice = variant.originalPrice ?? variant.price ?? 0;
+      const costPrice = variant.price ?? variant.originalPrice ?? 0;
       return sum + costPrice * (variant.stock ?? 0);
     }, 0);
 
@@ -342,10 +342,27 @@ const getProfitLossStatistics = async (req, res, next) => {
         select: 'originalPrice price',
       });
 
-    let totalSoldAmount = 0;
+      
+    const statusDistributionResult = await PayModel.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const distribution = { PENDING: 0, PAID: 0, CANCELLED: 0 };
+    statusDistributionResult.forEach((item) => {
+      if (item._id in distribution) {
+        distribution[item._id] = item.count;
+      }
+    });
+
+    // let totalSoldAmount = 0;
     let totalSoldCostAmount = 0;
-    let totalSoldQuantity = 0;
-    let totalPaidOrders = 0;
+    // let totalSoldQuantity = 0;
+    // let totalPaidOrders = 0;
     let totalAllTimeSoldCostAmount = 0;
     let totalAllTimeSoldAmount = 0;
     const chartMap = new Map();
@@ -373,8 +390,8 @@ const getProfitLossStatistics = async (req, res, next) => {
       const orderDateKey = formatDateKey(orderDateValue);
       const existingEntry = getChartEntry(orderDateKey);
 
-      totalSoldAmount += Number(order.totalAmount || 0);
-      totalPaidOrders += 1;
+      // totalSoldAmount += Number(order.totalAmount || 0);
+      // totalPaidOrders += 1;
       existingEntry.revenue += Number(order.totalAmount || 0);
       existingEntry.orders += 1;
 
@@ -382,14 +399,13 @@ const getProfitLossStatistics = async (req, res, next) => {
         const quantity = Number(item.quantity || 0);
         const costPrice = item.productVariant?.originalPrice ?? item.productVariant?.price ?? 0;
         const itemCost = costPrice * quantity;
-        totalSoldQuantity += quantity;
+        // totalSoldQuantity += quantity;
         totalSoldCostAmount += itemCost;
         existingEntry.cost += itemCost;
       });
       existingEntry.profit = existingEntry.revenue - existingEntry.cost;
       chartMap.set(orderDateKey, existingEntry);
     });
-    console.log("totalSoldCostAmount" , totalSoldCostAmount)
 
     allPaidOrders.forEach((order) => {
       totalAllTimeSoldAmount += Number(order.totalAmount || 0);
@@ -435,20 +451,22 @@ const getProfitLossStatistics = async (req, res, next) => {
           startDate: startDate ? startDate.toISOString() : null,
           endDate: endDate ? endDate.toISOString() : null,
         },
+        distribution,
         imported: {
           totalImportedAmount,
           totalImportedQuantity: inventoryVariants.reduce((sum, variant) => sum + (variant.stock ?? 0), 0),
         },
         chartData,
-        sales: {
-          totalSoldAmount,
-          totalSoldQuantity,
-          totalPaidOrders,
-        },
+        // sales: {
+        //   totalSoldAmount,
+        //   totalSoldQuantity,
+        //   totalPaidOrders,
+        // },
         profitLoss: {
-          totalSoldCostAmount: totalAllTimeSoldCostAmount,
-          amount: profitLossAmount,
-          type: profitLossAmount > 0 ? 'profit' : profitLossAmount < 0 ? 'loss' : 'balanced',
+          totalImportedAmount: totalImportedAmount,
+          soldAmount: totalAllTimeSoldAmount,
+          profit: totalAllTimeSoldCostAmount - totalImportedAmount,
+          type:  totalAllTimeSoldCostAmount - totalImportedAmount  > 0 ? 'profit' : totalAllTimeSoldCostAmount - totalImportedAmount < 0 ? 'loss' : 'balanced',
         },
       },
       message: 'Lấy dữ liệu lợi nhuận nhập bán thành công!',
