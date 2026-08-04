@@ -290,7 +290,6 @@ const getPayment = async (req, res, next) => {
 const handleWebhook = async (req, res, next) => {
     try {
         const webhookData = req.body;
-        // console.log("webhookData" , webhookData)
         if (!webhookData) {
             return res.status(StatusCodes.BAD_REQUEST).json({
                 success: false,
@@ -307,15 +306,46 @@ const handleWebhook = async (req, res, next) => {
             });
         }
 
-        // Xử lý dữ liệu webhook ở đây (ví dụ: cập nhật trạng thái đơn hàng trong cơ sở dữ liệu)
         const verifiedData = await PAYOSSS.webhooks.verify(webhookData);
-        // console.log("verifiedData" , verifiedData)
-        if (verifiedData.desc == 'success' && verifiedData.code === '00') {
+
+        if (verifiedData.desc === 'success' && verifiedData.code === '00') {
+            if (paymentInfo.status === 'PAID') {
+                return res.status(StatusCodes.OK).json({
+                    success: true,
+                    message: 'Webhook đã được xử lý trước đó !',
+                });
+            }
+
+            for (const item of paymentInfo.items) {
+                if (!item.productVariant || !item.quantity || item.quantity <= 0) continue;
+
+                const productVariant = await ProductVariantModel.findById(item.productVariant);
+                if (!productVariant) {
+                    continue;
+                }
+
+                if (productVariant.stock < item.quantity) {
+                    throw new Error(`Sản phẩm ${String(item.productVariant)} không đủ tồn kho để xác nhận thanh toán.`);
+                }
+
+                productVariant.stock -= item.quantity;
+                await productVariant.save();
+
+                if (item.flashSaleItem) {
+                    const flashSaleItem = await FlashSaleItemModel.findById(item.flashSaleItem);
+                    if (flashSaleItem) {
+                        flashSaleItem.flashSaleStock = Math.max(0, flashSaleItem.flashSaleStock - item.quantity);
+                        await flashSaleItem.save();
+                    }
+                }
+            }
+
             paymentInfo.status = 'PAID';
+            paymentInfo.paymentDate = new Date();
             await paymentInfo.save();
         }
-        // console.log("verifiedData : " , verifiedData)
-        res.status(StatusCodes.OK).json({
+
+        return res.status(StatusCodes.OK).json({
             success: true,
             message: 'Webhook nhận thành công !',
         });
