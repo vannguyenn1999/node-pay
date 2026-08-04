@@ -12,6 +12,7 @@ PayRouter.route('/get-history/:orderCode').get(AuthMiddlewares.checkAuthorizatio
 
 PayRouter.route('/get-pay').get(AuthMiddlewares.checkAuthorization , AuthMiddlewares.checkAdmin , PayController.getPaymentAdmin);
 PayRouter.route('/get-pay/:orderCode').get(AuthMiddlewares.checkAuthorization , AuthMiddlewares.checkAdmin , PayController.getPaymentAdminDetail);
+PayRouter.route('/update-status/:orderCode').put(AuthMiddlewares.checkAuthorization , AuthMiddlewares.checkAdmin , PayController.updatePaymentStatus);
 
 PayRouter.route('/payos-webhook').post(PayController.handleWebhook); 
 PayRouter.route('/cancel-payment').get(PayController.handlePaymentFailure);

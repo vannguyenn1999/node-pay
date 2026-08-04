@@ -271,11 +271,43 @@ const createPayment = async (req, res, next) => {
 }
 
 
+// ? Function to mark payment as PAID and automatically reduce stock for variants in the order
+export const markPaymentAsPaid = async (orderCode) => {
+    const paymentInfo = await PayModel.findOneAndUpdate(
+        { orderCode: String(orderCode), status: { $ne: 'PAID' } },
+        { status: 'PAID' },
+        { new: true }
+    );
+
+    if (paymentInfo) {
+        // Automatically reduce stock number in database for each item in the bill/order
+        for (const item of paymentInfo.items) {
+            if (item.productVariant && item.quantity > 0) {
+                const variantId = item.productVariant._id || item.productVariant;
+                const productVariant = await ProductVariantModel.findById(variantId);
+                if (productVariant) {
+                    const newStock = Math.max(0, (productVariant.stock || 0) - item.quantity);
+                    await ProductVariantModel.findByIdAndUpdate(variantId, {
+                        stock: newStock,
+                    });
+                }
+            }
+        }
+        return paymentInfo;
+    }
+    return null;
+};
+
 // ? Lấy thông tin thanh toán theo orderCode
 const getPayment = async (req, res, next) => {
     try {
         const { orderCode } = req.params;
         const paymentInfo = await PAYOSSS.paymentRequests.get(orderCode);
+        
+        if (paymentInfo && (paymentInfo.status === 'PAID' || paymentInfo.code === '00')) {
+            await markPaymentAsPaid(orderCode);
+        }
+
         res.status(StatusCodes.OK).json({
             success: true,
             data: paymentInfo,
@@ -311,8 +343,7 @@ const handleWebhook = async (req, res, next) => {
         const verifiedData = await PAYOSSS.webhooks.verify(webhookData);
         // console.log("verifiedData" , verifiedData)
         if (verifiedData.desc == 'success' && verifiedData.code === '00') {
-            paymentInfo.status = 'PAID';
-            await paymentInfo.save();
+            await markPaymentAsPaid(orderCode);
         }
         // console.log("verifiedData : " , verifiedData)
         res.status(StatusCodes.OK).json({
@@ -328,10 +359,20 @@ const getPaymentHistoryDetail = async (req, res, next) => {
     const { orderCode } = req.params;
     try {
         const userId = req.user.id;
+
+        try {
+            const payosInfo = await PAYOSSS.paymentRequests.get(orderCode);
+            if (payosInfo && (payosInfo.status === 'PAID' || payosInfo.code === '00')) {
+                await markPaymentAsPaid(orderCode);
+            }
+        } catch (e) {
+            // Ignore PayOS fetch error
+        }
+
         const paymentHistoryDetail = await PayModel.findOne({ user: userId, orderCode: orderCode })
             .populate({
                 path: 'items.productVariant',
-                select: 'sku price color storage imageColor product condition',
+                select: 'sku price color storage imageColor product condition stock',
                 populate: {
                     path: 'product',
                     select: 'name slug mainImage'
@@ -446,10 +487,19 @@ const getPaymentAdmin = async (req, res, next) => {
 const getPaymentAdminDetail = async (req, res, next) => {
     const { orderCode } = req.params;
     try {
+        try {
+            const payosInfo = await PAYOSSS.paymentRequests.get(orderCode);
+            if (payosInfo && (payosInfo.status === 'PAID' || payosInfo.code === '00')) {
+                await markPaymentAsPaid(orderCode);
+            }
+        } catch (e) {
+            // Ignore PayOS fetch error
+        }
+
         const paymentHistoryDetail = await PayModel.findOne({ orderCode: orderCode })
             .populate({
                 path: 'items.productVariant',
-                select: 'sku price color storage imageColor product condition',
+                select: 'sku price color storage imageColor product condition stock',
                 populate: {
                     path: 'product',
                     select: 'name slug mainImage'
@@ -469,6 +519,58 @@ const getPaymentAdminDetail = async (req, res, next) => {
     }
 }
 
+const updatePaymentStatus = async (req, res, next) => {
+    try {
+        const { orderCode } = req.params;
+        const { status } = req.body;
+
+        if (!['PENDING', 'PAID', 'CANCELLED'].includes(status)) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                success: false,
+                message: 'Trạng thái không hợp lệ !',
+            });
+        }
+
+        if (status === 'PAID') {
+            const updated = await markPaymentAsPaid(orderCode);
+            if (!updated) {
+                const existing = await PayModel.findOne({ orderCode: orderCode });
+                return res.status(StatusCodes.OK).json({
+                    success: true,
+                    data: existing,
+                    message: 'Đơn hàng đã ở trạng thái đã thanh toán trước đó !',
+                });
+            }
+            return res.status(StatusCodes.OK).json({
+                success: true,
+                data: updated,
+                message: 'Cập nhật trạng thái thanh toán và trừ số lượng tồn kho thành công !',
+            });
+        }
+
+        const paymentInfo = await PayModel.findOneAndUpdate(
+            { orderCode: orderCode },
+            { status: status },
+            { new: true }
+        );
+
+        if (!paymentInfo) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                success: false,
+                message: 'Không tìm thấy đơn hàng !',
+            });
+        }
+
+        res.status(StatusCodes.OK).json({
+            success: true,
+            data: paymentInfo,
+            message: 'Cập nhật trạng thái đơn hàng thành công !',
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export const PayController = {
     createPayment,
     handleWebhook,
@@ -477,5 +579,7 @@ export const PayController = {
     getPaymentHistoryDetail,
     handlePaymentFailure,
     getPaymentAdmin,
-    getPaymentAdminDetail
+    getPaymentAdminDetail,
+    updatePaymentStatus,
+    markPaymentAsPaid,
 }
